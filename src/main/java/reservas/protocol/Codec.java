@@ -22,6 +22,7 @@ public final class Codec {
   public static final String INVALID_REQUEST = "Requisicao invalida";
   public static final String UNKNOWN_OPERATION = "Operacao desconhecida";
   public static final String MESSAGE_TOO_LARGE = "Mensagem excede o tamanho maximo";
+  public static final String INTERNAL_ERROR = "Erro interno do servidor";
 
   private Codec() {
   }
@@ -86,7 +87,7 @@ public final class Codec {
     return "objeto";
   }
 
-  static String snippet(String line) {
+  public static String snippet(String line) {
     String visible = line.replace("\\", "\\\\").replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t");
     return visible.length() <= RAW_SNIPPET_LIMIT ? visible
         : visible.substring(0, RAW_SNIPPET_LIMIT) + "...(+" + (visible.length() - RAW_SNIPPET_LIMIT) + " chars)";

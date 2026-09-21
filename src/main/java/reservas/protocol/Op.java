@@ -4,7 +4,7 @@ import java.util.Optional;
 
 // Os nomes das constantes são os nomes do protocolo em maiúsculas: `REGISTER` trafega como `register`.
 // O `op` de uma resposta é sempre o `op` da requisição acrescido de `_response`; exceto `ERROR_OP`, quando a requisição não pôde ser interpretada
-public enum Op {
+public enum Op implements WireValue {
   REGISTER("register"),
   LOGIN("login"),
   LOGOUT("logout"),
@@ -44,6 +44,7 @@ public enum Op {
     this(wireName, false);
   }
 
+  @Override
   public String wireName() {
     return wireName;
   }
@@ -62,12 +63,6 @@ public enum Op {
   }
 
   public static Optional<Op> fromWire(String wireName) {
-    for (Op op : values()) {
-      if (op.wireName.equals(wireName)) {
-        return Optional.of(op);
-      }
-    }
-
-    return Optional.empty();
+    return WireValues.fromWire(values(), wireName);
   }
 }
