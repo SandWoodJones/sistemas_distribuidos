@@ -11,7 +11,6 @@ import java.util.Optional;
 
 import reservas.protocol.Codec;
 import reservas.protocol.ProtocolException;
-import reservas.protocol.Status;
 
 final class Database implements AutoCloseable {
   private final String url;
@@ -102,9 +101,9 @@ final class Database implements AutoCloseable {
   }
 
   private static ProtocolException failure(String sql, Object[] values, SQLException cause) {
-    return new ProtocolException(Status.INTERNAL_SERVER_ERROR, Codec.INTERNAL_ERROR,
+    return ProtocolException.internal(
         Codec.snippet(sql.strip()) + " " + Arrays.toString(values) + "; SQLException(errorCode=" + cause.getErrorCode()
-            + ", sqlState=" + cause.getSQLState() + "):" + cause.getMessage(),
+            + ", sqlState=" + cause.getSQLState() + "): " + cause.getMessage(),
         cause);
   }
 

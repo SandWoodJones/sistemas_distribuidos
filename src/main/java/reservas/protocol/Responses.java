@@ -11,24 +11,17 @@ public final class Responses {
     return envelope(op.responseName(), status, message);
   }
 
+  public static JsonObject of(Op op, ProtocolException failure) {
+    return of(op, failure.status(), failure.wireMessage());
+  }
+
   // O `op` `error` usado quando nenhum `op` de requisição é determinado
   public static JsonObject error(Status status, String message) {
     return envelope(Op.ERROR_OP, status, message);
   }
 
-  // A linha não gera um objeto JSON válido
-  public static JsonObject invalidRequest() {
-    return error(Status.BAD_REQUEST, Codec.INVALID_REQUEST);
-  }
-
-  // O `op` é bem formado, mas não nomeia operação implementada
-  public static JsonObject unknownOperation() {
-    return error(Status.BAD_REQUEST, Codec.UNKNOWN_OPERATION);
-  }
-
-  // A mensagem excedeu `Codec.MAX_MESSAGE_BYTES`
-  public static JsonObject messageTooLarge() {
-    return error(Status.BAD_REQUEST, Codec.MESSAGE_TOO_LARGE);
+  public static JsonObject error(ProtocolException failure) {
+    return error(failure.status(), failure.wireMessage());
   }
 
   private static JsonObject envelope(String op, Status status, String message) {

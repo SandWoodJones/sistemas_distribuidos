@@ -116,4 +116,12 @@ class CodecTest {
     assertTrue(thrown.getMessage().contains("{op:"), "diagnostico deve trazer a linha bruta");
     assertNotNull(thrown.getCause());
   }
+
+  @Test
+  void protocolLevelTextsMatchTheSpreadsheet() {
+    assertEquals("Requisicao invalida", Codec.INVALID_REQUEST);
+    assertEquals("Operacao desconhecida", Codec.UNKNOWN_OPERATION);
+    assertEquals("Mensagem excede o tamanho maximo", Codec.MESSAGE_TOO_LARGE);
+    assertEquals("Erro interno do servidor", Codec.INTERNAL_ERROR);
+  }
 }

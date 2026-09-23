@@ -8,7 +8,6 @@ import java.util.Optional;
 import reservas.protocol.Codec;
 import reservas.protocol.ProtocolException;
 import reservas.protocol.Role;
-import reservas.protocol.Status;
 
 // Persistência, toda operação que pode conflitar decide o conflito aqui e devolve `Optional` vazio; quem chama traduz para 409.
 // Guarda uma conexão pela vida inteira
@@ -124,7 +123,7 @@ public final class SqliteStore implements AutoCloseable {
   }
 
   private static ProtocolException corrupt(String column, String value) {
-    return new ProtocolException(Status.INTERNAL_SERVER_ERROR, Codec.INTERNAL_ERROR,
-        "valor invalido gravado em users." + column + ": " + Codec.snippet(String.valueOf(value)));
+    return ProtocolException
+        .internal("valor invalido gravado em users." + column + ": " + Codec.snippet(String.valueOf(value)));
   }
 }

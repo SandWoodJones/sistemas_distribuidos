@@ -24,14 +24,4 @@ class ResponsesTest {
     assertEquals("register_response",
         Responses.of(Op.REGISTER, Status.CREATED, "Usuario cadastrado com sucesso").get(Fields.OP).getAsString());
   }
-
-  @Test
-  void protocolErrorsUseTheErrorOp() {
-    assertEquals("{\"op\":\"error\",\"status\":\"400\",\"message\":\"Requisicao invalida\"}",
-        Responses.invalidRequest().toString());
-    assertEquals("{\"op\":\"error\",\"status\":\"400\",\"message\":\"Operacao desconhecida\"}",
-        Responses.unknownOperation().toString());
-    assertEquals("{\"op\":\"error\",\"status\":\"400\",\"message\":\"Mensagem excede o tamanho maximo\"}",
-        Responses.messageTooLarge().toString());
-  }
 }

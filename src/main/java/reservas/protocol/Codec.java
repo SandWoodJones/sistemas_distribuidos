@@ -32,8 +32,8 @@ public final class Codec {
     String line = message + "\n";
 
     if (sizeInBytes(line) > MAX_MESSAGE_BYTES) {
-      throw new ProtocolException(Status.INTERNAL_SERVER_ERROR, MESSAGE_TOO_LARGE, "resposta gerada com "
-          + sizeInBytes(line) + " bytes, limite " + MAX_MESSAGE_BYTES + "; inicio=" + snippet(line));
+      throw ProtocolException.internal("resposta gerada com " + sizeInBytes(line) + " bytes, limite " + MAX_MESSAGE_BYTES
+          + "; inicio=" + snippet(line));
     }
 
     return line;
@@ -43,8 +43,8 @@ public final class Codec {
   // sido removido
   public static JsonObject decode(String line) {
     if (sizeInBytes(line) > MAX_MESSAGE_BYTES) {
-      throw new ProtocolException(Status.BAD_REQUEST, MESSAGE_TOO_LARGE,
-          "recebidos " + sizeInBytes(line) + " bytes, limite " + MAX_MESSAGE_BYTES + "; inicio=" + snippet(line));
+      throw ProtocolException.badRequest(MESSAGE_TOO_LARGE,
+          diagnosis("recebidos " + sizeInBytes(line) + " bytes, limite " + MAX_MESSAGE_BYTES, line));
     }
 
     try (JsonReader reader = new JsonReader(new StringReader(line))) {
@@ -54,18 +54,17 @@ public final class Codec {
       JsonElement parsed = JsonParser.parseReader(reader);
 
       if (!parsed.isJsonObject()) {
-        throw new ProtocolException(Status.BAD_REQUEST, INVALID_REQUEST,
-            "esperado objeto JSON, veio " + typeOf(parsed) + "; bruto=" + snippet(line));
+        throw ProtocolException.badRequest(INVALID_REQUEST,
+            diagnosis("esperado objeto JSON, veio " + typeOf(parsed), line));
       }
       if (reader.peek() != JsonToken.END_DOCUMENT) {
-        throw new ProtocolException(Status.BAD_REQUEST, INVALID_REQUEST,
-            "conteudo extra depois do objeto; bruto=" + snippet(line));
+        throw ProtocolException.badRequest(INVALID_REQUEST, diagnosis("conteudo extra depois do objeto", line));
       }
 
       return parsed.getAsJsonObject();
     } catch (JsonParseException | IOException | IllegalStateException e) {
-      throw new ProtocolException(Status.BAD_REQUEST, INVALID_REQUEST,
-          e.getClass().getSimpleName() + ": " + e.getMessage() + "; bruto=" + snippet(line), e);
+      throw ProtocolException.badRequest(INVALID_REQUEST,
+          diagnosis(e.getClass().getSimpleName() + ": " + e.getMessage(), line), e);
     }
   }
 
@@ -85,6 +84,10 @@ public final class Codec {
       return "valor primitivo";
     }
     return "objeto";
+  }
+
+  public static String diagnosis(String detail, String line) {
+    return detail + "; bruto=" + snippet(line);
   }
 
   public static String snippet(String line) {
