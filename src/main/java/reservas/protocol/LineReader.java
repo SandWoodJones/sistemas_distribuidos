@@ -1,4 +1,4 @@
-package reservas.server;
+package reservas.protocol;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -6,19 +6,16 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.Optional;
 
-import reservas.protocol.Codec;
-import reservas.protocol.ProtocolException;
-
 // Uma mensagem por linha, cortada no limite de bytes antes de interpretar
-final class LineReader {
+public final class LineReader {
   private final InputStream bytes;
 
-  LineReader(InputStream bytes) {
+  public LineReader(InputStream bytes) {
     this.bytes = bytes;
   }
 
   // Vazio quando o cliente fecha a conexão
-  Optional<String> readLine() throws IOException {
+  public Optional<String> readLine() throws IOException {
     ByteArrayOutputStream line = new ByteArrayOutputStream();
 
     for (int read = bytes.read(); read != -1; read = bytes.read()) {

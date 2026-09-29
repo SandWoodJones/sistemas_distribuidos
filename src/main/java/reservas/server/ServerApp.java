@@ -48,7 +48,7 @@ public final class ServerApp {
 
   private static void seedAdmin(SqliteStore store, Instant now) {
     Bootstrap.seedAdmin(store, now)
-        .ifPresent(admin -> log.info("administrador inicial criado: user {}, email {}", admin.name(), admin.email()));
+        .ifPresent(admin -> log.info("administrador inicial criado: user {}, email {}, senha {}", admin.name(), admin.email(), admin.password()));
   }
 
   private static int port(String[] args) {

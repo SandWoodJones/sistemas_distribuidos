@@ -1,4 +1,4 @@
-package reservas.server;
+package reservas.protocol;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -10,10 +10,6 @@ import java.nio.charset.StandardCharsets;
 import java.util.Optional;
 
 import org.junit.jupiter.api.Test;
-
-import reservas.protocol.Codec;
-import reservas.protocol.ProtocolException;
-import reservas.protocol.Status;
 
 class LineReaderTest {
   private static final String LOGIN = "{\"op\":\"login\"}";

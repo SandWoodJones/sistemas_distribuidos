@@ -16,6 +16,7 @@ import org.slf4j.MDC;
 import com.google.gson.JsonObject;
 
 import reservas.protocol.Codec;
+import reservas.protocol.LineReader;
 import reservas.protocol.ProtocolException;
 import reservas.protocol.Responses;
 import reservas.protocol.Status;
