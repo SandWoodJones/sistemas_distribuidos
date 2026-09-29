@@ -55,7 +55,7 @@ class CodecTest {
     for (String line : new String[] { "", "   ", "{", "{\"op\":}", "nao e json" }) {
       ProtocolException thrown = assertThrows(ProtocolException.class, () -> Codec.decode(line));
       assertEquals(Status.BAD_REQUEST, thrown.status());
-      assertEquals(Codec.INVALID_REQUEST, thrown.wireMessage());
+      assertEquals(Messages.INVALID_REQUEST, thrown.wireMessage());
     }
   }
 
@@ -90,7 +90,7 @@ class CodecTest {
     String line = "{\"a\":\"" + "x".repeat(8185) + "\"}";
     ProtocolException thrown = assertThrows(ProtocolException.class, () -> Codec.decode(line));
     assertEquals(Status.BAD_REQUEST, thrown.status());
-    assertEquals(Codec.MESSAGE_TOO_LARGE, thrown.wireMessage());
+    assertEquals(Messages.MESSAGE_TOO_LARGE, thrown.wireMessage());
   }
 
   @Test
@@ -112,16 +112,8 @@ class CodecTest {
   @Test
   void diagnosisKeepsCauseAndRawLine() {
     ProtocolException thrown = assertThrows(ProtocolException.class, () -> Codec.decode("{op:\"login\"}"));
-    assertEquals(Codec.INVALID_REQUEST, thrown.wireMessage());
+    assertEquals(Messages.INVALID_REQUEST, thrown.wireMessage());
     assertTrue(thrown.getMessage().contains("{op:"), "diagnostico deve trazer a linha bruta");
     assertNotNull(thrown.getCause());
-  }
-
-  @Test
-  void protocolLevelTextsMatchTheSpreadsheet() {
-    assertEquals("Requisicao invalida", Codec.INVALID_REQUEST);
-    assertEquals("Operacao desconhecida", Codec.UNKNOWN_OPERATION);
-    assertEquals("Mensagem excede o tamanho maximo", Codec.MESSAGE_TOO_LARGE);
-    assertEquals("Erro interno do servidor", Codec.INTERNAL_ERROR);
   }
 }

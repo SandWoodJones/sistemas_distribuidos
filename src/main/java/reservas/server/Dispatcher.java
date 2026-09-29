@@ -10,22 +10,19 @@ import com.google.gson.JsonObject;
 
 import reservas.protocol.Codec;
 import reservas.protocol.Fields;
+import reservas.protocol.Messages;
 import reservas.protocol.Op;
 import reservas.protocol.ProtocolException;
 import reservas.protocol.Responses;
 
 // Escolhe o handler pelo `op`. requisição recebida por inteiro é sempre respondida
 public final class Dispatcher {
-  private final SqliteStore store;
-  private final Clock clock;
-  private final TokenGenerator tokens;
+  private final ServerContext context;
   private final Consumer<ProtocolException> diagnostics;
   private final Map<Op, Handler> handlers = new EnumMap<>(Op.class);
 
   public Dispatcher(SqliteStore store, Clock clock, TokenGenerator tokens, Consumer<ProtocolException> diagnostics) {
-    this.store = store;
-    this.clock = clock;
-    this.tokens = tokens;
+    this.context = new ServerContext(store, clock, tokens);
     this.diagnostics = diagnostics;
   }
 
@@ -48,7 +45,7 @@ public final class Dispatcher {
     }
 
     try {
-      return handler.handle(request, store, clock, tokens);
+      return handler.handle(request, context);
     } catch (ProtocolException e) {
       // 400, 401, 403, 409
       return report(op, e);
@@ -72,18 +69,18 @@ public final class Dispatcher {
   private static Op operation(JsonObject request) {
     JsonElement op = request.get(Fields.OP);
     if (op == null || !op.isJsonPrimitive() || !op.getAsJsonPrimitive().isString()) {
-      throw reject(request, Codec.INVALID_REQUEST, "campo 'op' ausente ou nao-string");
+      throw reject(request, Messages.INVALID_REQUEST, "campo 'op' ausente ou nao-string");
     }
 
     String wireName = op.getAsString();
     return Op.fromWire(wireName).orElseThrow(
-        () -> reject(request, Codec.UNKNOWN_OPERATION, "op \"" + Codec.snippet(wireName) + "\" nao existe"));
+        () -> reject(request, Messages.UNKNOWN_OPERATION, "op \"" + Codec.snippet(wireName) + "\" nao existe"));
   }
 
   private Handler handlerFor(Op op) {
     Handler handler = handlers.get(op);
     if (handler == null) {
-      throw ProtocolException.badRequest(Codec.UNKNOWN_OPERATION,
+      throw ProtocolException.badRequest(Messages.UNKNOWN_OPERATION,
           "op \"" + op.wireName() + "\" existe no protocolo mas nao tem handler registrado");
     }
 

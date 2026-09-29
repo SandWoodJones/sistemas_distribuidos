@@ -12,8 +12,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import com.google.gson.JsonParser;
-
+import reservas.protocol.TestJson;
 import reservas.protocol.ProtocolException;
 import reservas.protocol.Request;
 import reservas.protocol.Role;
@@ -25,6 +24,7 @@ class CallerTest {
   private static final String BAD_REQUEST = "Token em formato invalido";
 
   private final SqliteStore store = SqliteStore.openInMemory();
+  private final TokenGenerator tokens = () -> "b".repeat(64);
   private User joao;
 
   @BeforeEach
@@ -39,8 +39,8 @@ class CallerTest {
   }
 
   private Caller authenticate(String json, Instant now) {
-    return Caller.authenticate(new Request(JsonParser.parseString(json).getAsJsonObject(), BAD_REQUEST), store,
-        Clock.fixed(now, ZoneOffset.UTC));
+    return Caller.authenticate(new Request(TestJson.object(json), BAD_REQUEST), new ServerContext(store,
+        Clock.fixed(now, ZoneOffset.UTC), tokens));
   }
 
   private ProtocolException fails(String json, Instant now) {
@@ -48,7 +48,7 @@ class CallerTest {
   }
 
   private static String withToken(String token) {
-    return "{\"op\":\"read_user\",\"token\":\"" + token + "\"}";
+    return "{'op':'read_user','token':'" + token + "'}";
   }
 
   @Test
@@ -76,7 +76,7 @@ class CallerTest {
 
   @Test
   void treatsAnAbsentTokenAsUnauthorized() {
-    for (String json : new String[] { "{\"op\":\"read_user\"}", withToken("") }) {
+    for (String json : new String[] { "{'op':'read_user'}", withToken("") }) {
       ProtocolException failure = fails(json, T0);
       assertEquals(Status.UNAUTHORIZED, failure.status(), json);
       assertEquals("Token invalido ou expirado", failure.wireMessage(), json);
@@ -87,7 +87,7 @@ class CallerTest {
   @Test
   void treatsAMalformedTokenAsBadRequest() {
     for (String json : new String[] { withToken("abc"), withToken("A".repeat(64)), withToken("g".repeat(64)),
-        "{\"op\":\"read_user\",\"token\":null}" }) {
+        "{'op':'read_user','token':null}" }) {
       ProtocolException failure = fails(json, T0);
       assertEquals(Status.BAD_REQUEST, failure.status(), json);
       assertEquals(BAD_REQUEST, failure.wireMessage(), json);

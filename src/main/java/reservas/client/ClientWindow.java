@@ -39,17 +39,6 @@ public final class ClientWindow extends JFrame {
   private final JButton connection = new JButton("Conectar");
   private final JLabel status = new JLabel("desconectado");
 
-  private final JTextField registerEmail = new JTextField(18);
-  private final JTextField registerUser = new JTextField(18);
-  private final JPasswordField registerPassword = new JPasswordField(18);
-
-  private final JTextField loginEmail = new JTextField(18);
-  private final JPasswordField loginPassword = new JPasswordField(18);
-
-  private final JTextField newUser = new JTextField(18);
-  private final JPasswordField newPassword = new JPasswordField(18);
-  private final JPasswordField deletePassword = new JPasswordField(18);
-
   private final JTextArea messages = new JTextArea(16, 90);
 
   private Session session;
@@ -81,16 +70,44 @@ public final class ClientWindow extends JFrame {
 
   private JTabbedPane operations() {
     JTabbedPane tabs = new JTabbedPane();
-    tabs.addTab("Cadastro",
-        stack(row("Email", registerEmail), row("Usuario", registerUser), row("Senha", registerPassword), action(
-            "Cadastrar", () -> session.register(text(registerEmail), text(registerUser), secret(registerPassword)))));
-
-    tabs.addTab("Login",
-        stack(row("Email", loginEmail), row("Senha", loginPassword),
-            action("Entrar", () -> session.login(text(loginEmail), secret(loginPassword))), action("Sair",
-                () -> session.logout())));
-
+    tabs.addTab("Cadastro", registerTab());
+    tabs.addTab("Login", loginTab());
+    tabs.addTab("Minha conta", accountTab());
     return tabs;
+  }
+
+  private JPanel registerTab() {
+    Form form = new Form();
+    JTextField email = form.field("Email");
+    JTextField user = form.field("Usuario");
+    JPasswordField password = form.password("Senha");
+    form.button("Cadastrar", () -> session.register(text(email), text(user), secret(password)));
+
+    return form.panel();
+  }
+
+  private JPanel loginTab() {
+    Form form = new Form();
+    JTextField email = form.field("Email");
+    JPasswordField password = form.password("Senha");
+    form.button("Entrar", () -> session.login(text(email), secret(password)));
+    form.button("Sair", () -> session.logout());
+
+    return form.panel();
+  }
+
+  private JPanel accountTab() {
+    Form form = new Form();
+    form.button("Ler meus dados", () -> session.readUser());
+
+    JTextField user = form.field("Novo usuario");
+    JPasswordField password = form.password("Nova senha");
+    form.button("Atualizar", () -> session.updateUser(text(user), secret(password)));
+
+    JPasswordField confirm = form.password("Confirme a senha");
+    form.button("Remover conta", () -> session.deleteUser(secret(confirm)));
+
+    return form.panel();
   }
 
   private JScrollPane messagePane() {
@@ -174,13 +191,6 @@ public final class ClientWindow extends JFrame {
     }
   }
 
-  private JButton action(String label, Callable<JsonObject> call) {
-    JButton button = new JButton(label);
-    button.addActionListener(event -> send(call));
-    actions.add(button);
-    return button;
-  }
-
   private void append(String line) {
     messages.append(line + "\n");
     messages.setCaretPosition(messages.getDocument().getLength());
@@ -196,25 +206,6 @@ public final class ClientWindow extends JFrame {
     return response.get(Fields.STATUS).getAsString() + " " + response.get(Fields.MESSAGE).getAsString();
   }
 
-  private static JPanel stack(JComponent... rows) {
-    JPanel panel = new JPanel();
-    panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
-    panel.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
-
-    for (JComponent component : rows) {
-      panel.add(component);
-    }
-
-    return panel;
-  }
-
-  private static JPanel row(String label, JComponent field) {
-    JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT));
-    row.add(new JLabel(label));
-    row.add(field);
-    return row;
-  }
-
   private static String text(JTextField field) {
     return field.getText().strip();
   }
@@ -225,5 +216,44 @@ public final class ClientWindow extends JFrame {
 
   private static void onEdt(Runnable update) {
     SwingUtilities.invokeLater(update);
+  }
+
+  private final class Form {
+    private final JPanel panel = new JPanel();
+
+    private Form() {
+      panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
+      panel.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
+    }
+
+    private JTextField field(String label) {
+      return labelled(label, new JTextField());
+    }
+
+    private JPasswordField password(String label) {
+      return labelled(label, new JPasswordField(18));
+    }
+
+    private void button(String label, Callable<JsonObject> call) {
+      JButton button = new JButton(label);
+      button.setEnabled(false);
+      button.addActionListener(event -> send(call));
+
+      actions.add(button);
+      panel.add(button);
+    }
+
+    private JPanel panel() {
+      return panel;
+    }
+
+    private <T extends JComponent> T labelled(String label, T field) {
+      JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT));
+      row.add(new JLabel(label));
+      row.add(field);
+      panel.add(row);
+
+      return field;
+    }
   }
 }

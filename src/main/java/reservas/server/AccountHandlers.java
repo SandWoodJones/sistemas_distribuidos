@@ -30,26 +30,27 @@ public final class AccountHandlers {
     dispatcher.register(Op.DELETE_USER, AccountHandlers::deleteUser);
   }
 
-  static JsonObject readUser(JsonObject json, SqliteStore store, Clock clock, TokenGenerator tokens) {
+  static JsonObject readUser(JsonObject json, ServerContext context) {
     Request request = new Request(json, READ_USER_BAD_REQUEST);
-    User user = Caller.authenticate(request, store, clock).user();
+
+    User user = Caller.authenticate(request, context).user();
 
     JsonObject response = Responses.of(Op.READ_USER, Status.OK, "Consulta realizada com sucesso");
     response.addProperty(Fields.USER, user.name());
     response.addProperty(Fields.EMAIL, user.email());
     response.addProperty(Fields.ROLE, user.role().wireName());
-    response.addProperty(Fields.CREATED_AT, createdAt(user, clock));
+    response.addProperty(Fields.CREATED_AT, createdAt(user, context.clock()));
     return response;
   }
 
-  static JsonObject updateUser(JsonObject json, SqliteStore store, Clock clock, TokenGenerator tokens) {
+  static JsonObject updateUser(JsonObject json, ServerContext context) {
     Request request = new Request(json, UPDATE_USER_BAD_REQUEST);
     request.mustBeAbsent(Fields.EMAIL);
     String name = request.optional(Fields.USER, Formats.USER).orElse(null);
     String password = request.optional(Fields.PASSWORD, Formats.PASSWORD).orElse(null);
 
-    User updated = Caller.authenticate(request, store, clock).user().with(name, password);
-    if (store.updateUser(updated).isEmpty()) {
+    User updated = Caller.authenticate(request, context).user().with(name, password);
+    if (context.store().updateUser(updated).isEmpty()) {
       throw ProtocolException.conflict("Usuario ja esta em uso",
           "user \"" + updated.name() + "\" ja pertence a outro cadastro");
     }
@@ -57,11 +58,13 @@ public final class AccountHandlers {
     return Responses.of(Op.UPDATE_USER, Status.OK, "Dados atualizados com sucesso");
   }
 
-  static JsonObject deleteUser(JsonObject json, SqliteStore store, Clock clock, TokenGenerator tokens) {
+  static JsonObject deleteUser(JsonObject json, ServerContext context) {
     Request request = new Request(json, DELETE_USER_BAD_REQUEST);
     String password = request.required(Fields.PASSWORD, Formats.PASSWORD);
 
-    User user = Caller.authenticate(request, store, clock).user();
+    SqliteStore store = context.store();
+
+    User user = Caller.authenticate(request, context).user();
     confirmPassword(user, password);
     protectLastAdmin(store, user);
 

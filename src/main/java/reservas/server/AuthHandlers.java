@@ -1,7 +1,5 @@
 package reservas.server;
 
-import java.time.Clock;
-
 import com.google.gson.JsonObject;
 
 import reservas.protocol.Fields;
@@ -30,26 +28,30 @@ public final class AuthHandlers {
   }
 
   // Todo cadastro nasce `user` sem sessão
-  static JsonObject register(JsonObject json, SqliteStore store, Clock clock, TokenGenerator tokens) {
+  static JsonObject register(JsonObject json, ServerContext context) {
     Request request = new Request(json, REGISTER_BAD_REQUEST);
     String email = request.required(Fields.EMAIL, Formats.EMAIL);
     String user = request.required(Fields.USER, Formats.USER);
     String password = request.required(Fields.PASSWORD, Formats.PASSWORD);
 
-    if (store.createUser(user, email, password, Role.USER, clock.instant()).isEmpty()) {
+    SqliteStore store = context.store();
+
+    if (store.createUser(user, email, password, Role.USER, context.clock().instant()).isEmpty()) {
       throw ProtocolException.conflict("Usuario ou email ja cadastrado", taken(store, user, email));
     }
 
     return Responses.of(Op.REGISTER, Status.CREATED, "Usuario cadastrado com sucesso");
   }
 
-  static JsonObject login(JsonObject json, SqliteStore store, Clock clock, TokenGenerator tokens) {
+  static JsonObject login(JsonObject json, ServerContext context) {
     Request request = new Request(json, LOGIN_BAD_REQUEST);
     String email = request.required(Fields.EMAIL, Formats.EMAIL);
     String password = request.required(Fields.PASSWORD, Formats.PASSWORD);
 
+    SqliteStore store = context.store();
+
     User user = authenticate(store, email, password);
-    Session session = store.createSession(tokens.next(), user.id(), clock.instant()).orElseThrow(() -> ProtocolException
+    Session session = store.createSession(context.tokens().next(), user.id(), context.clock().instant()).orElseThrow(() -> ProtocolException
         .conflict("Usuario ja possui sessao ativa", "user \"" + user.name() + "\" ja tem sessao viva"));
 
     JsonObject response = Responses.of(Op.LOGIN, Status.OK, "Login realizado com sucesso");
@@ -58,11 +60,11 @@ public final class AuthHandlers {
     return response;
   }
 
-  static JsonObject logout(JsonObject json, SqliteStore store, Clock clock, TokenGenerator tokens) {
+  static JsonObject logout(JsonObject json, ServerContext context) {
     Request request = new Request(json, LOGOUT_BAD_REQUEST);
-    Caller caller = Caller.authenticate(request, store, clock);
+    Caller caller = Caller.authenticate(request, context);
 
-    store.deleteSession(caller.session().token());
+    context.store().deleteSession(caller.session().token());
     return Responses.of(Op.LOGOUT, Status.OK, "Logout realizado com sucesso");
   }
 

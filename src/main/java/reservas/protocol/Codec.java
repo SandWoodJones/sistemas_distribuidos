@@ -19,11 +19,6 @@ public final class Codec {
   // Trecho da linha bruta que entra no diagnóstico
   private static final int RAW_SNIPPET_LIMIT = 200;
 
-  public static final String INVALID_REQUEST = "Requisicao invalida";
-  public static final String UNKNOWN_OPERATION = "Operacao desconhecida";
-  public static final String MESSAGE_TOO_LARGE = "Mensagem excede o tamanho maximo";
-  public static final String INTERNAL_ERROR = "Erro interno do servidor";
-
   private Codec() {
   }
 
@@ -43,7 +38,7 @@ public final class Codec {
   // sido removido
   public static JsonObject decode(String line) {
     if (sizeInBytes(line) > MAX_MESSAGE_BYTES) {
-      throw ProtocolException.badRequest(MESSAGE_TOO_LARGE,
+      throw ProtocolException.badRequest(Messages.MESSAGE_TOO_LARGE,
           diagnosis("recebidos " + sizeInBytes(line) + " bytes, limite " + MAX_MESSAGE_BYTES, line));
     }
 
@@ -54,16 +49,16 @@ public final class Codec {
       JsonElement parsed = JsonParser.parseReader(reader);
 
       if (!parsed.isJsonObject()) {
-        throw ProtocolException.badRequest(INVALID_REQUEST,
+        throw ProtocolException.badRequest(Messages.INVALID_REQUEST,
             diagnosis("esperado objeto JSON, veio " + typeOf(parsed), line));
       }
       if (reader.peek() != JsonToken.END_DOCUMENT) {
-        throw ProtocolException.badRequest(INVALID_REQUEST, diagnosis("conteudo extra depois do objeto", line));
+        throw ProtocolException.badRequest(Messages.INVALID_REQUEST, diagnosis("conteudo extra depois do objeto", line));
       }
 
       return parsed.getAsJsonObject();
     } catch (JsonParseException | IOException | IllegalStateException e) {
-      throw ProtocolException.badRequest(INVALID_REQUEST,
+      throw ProtocolException.badRequest(Messages.INVALID_REQUEST,
           diagnosis(e.getClass().getSimpleName() + ": " + e.getMessage(), line), e);
     }
   }

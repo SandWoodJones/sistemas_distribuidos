@@ -7,9 +7,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.time.Clock;
-import java.time.Instant;
-import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -19,54 +16,34 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 
 import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
 
+import reservas.protocol.TestJson;
 import reservas.protocol.Fields;
-import reservas.server.AccountHandlers;
-import reservas.server.AuthHandlers;
-import reservas.server.Dispatcher;
-import reservas.server.RandomTokenGenerator;
-import reservas.server.ServerSocketLoop;
-import reservas.server.SqliteStore;
+import reservas.server.TestServer;
 
 @Timeout(10)
 class ProtocolClientTest {
-  private static final Instant T0 = Instant.parse("2026-09-09T17:32:10Z");
-  private static final String REGISTER = "{\"op\":\"register\",\"email\":\"joao.silva@email.com\",\"user\":\"joao\",\"password\":\"senha123\"}";
+  private static final String REGISTER = "{'op':'register','email':'joao.silva@email.com','user':'joao','password':'senha123'}";
 
+  private TestServer server;
   private final List<String> traffic = new ArrayList<>();
-
-  private SqliteStore store;
-  private ServerSocketLoop server;
-  private Thread accepting;
 
   @BeforeEach
   void startServer() throws IOException {
-    store = SqliteStore.openInMemory();
-    Dispatcher dispatcher = new Dispatcher(store, Clock.fixed(T0, ZoneId.of("America/Sao_Paulo")),
-        new RandomTokenGenerator(), failure -> {
-        });
-    AuthHandlers.install(dispatcher);
-    AccountHandlers.install(dispatcher);
-
-    server = ServerSocketLoop.bind(0, dispatcher);
-    accepting = new Thread(server::acceptForever, "accept-test");
-    accepting.start();
+    server = TestServer.start();
   }
 
   @AfterEach
-  void stopServer() throws InterruptedException {
+  void stopServer() {
     server.close();
-    accepting.join(2000);
-    store.close();
   }
 
   private ProtocolClient connect() throws IOException {
-    return ProtocolClient.connect("localhost", server.port(), 2000, traffic::add);
+    return TestClients.connect(server.port(), traffic::add);
   }
 
   private static JsonObject request(String json) {
-    return JsonParser.parseString(json).getAsJsonObject();
+    return TestJson.object(json);
   }
 
   private static void assertStatus(String status, JsonObject response) {
@@ -90,12 +67,12 @@ class ProtocolClientTest {
       assertStatus("201", client.ask(request(REGISTER)));
 
       JsonObject login = client
-          .ask(request("{\"op\":\"login\",\"email\":\"joao.silva@email.com\",\"password\":\"senha123\"}"));
+          .ask(request("{'op':'login','email':'joao.silva@email.com','password':'senha123'}"));
       assertStatus("200", login);
       String token = login.get(Fields.TOKEN).getAsString();
 
-      assertStatus("200", client.ask(request("{\"op\":\"read_user\",\"token\":\"" + token + "\"}")));
-      assertStatus("200", client.ask(request("{\"op\":\"logout\",\"token\":\"" + token + "\"}")));
+      assertStatus("200", client.ask(request("{'op':'read_user','token':'" + token + "'}")));
+      assertStatus("200", client.ask(request("{'op':'logout','token':'" + token + "'}")));
     }
   }
 
@@ -106,7 +83,7 @@ class ProtocolClientTest {
     }
 
     assertEquals(2, traffic.size(), traffic.toString());
-    assertEquals("-> " + REGISTER, traffic.get(0));
+    assertEquals("-> " + TestJson.json(REGISTER), traffic.get(0));
     assertTrue(traffic.get(1).startsWith("<- {\"op\":\"register_response\""), traffic.get(1));
   }
 
@@ -117,13 +94,13 @@ class ProtocolClientTest {
         try (Socket accepted = rude.accept()) {
           accepted.getInputStream().read();
         } catch (IOException ignored) {
-
+          // Ignorado
         }
       });
 
       closing.start();
 
-      try (ProtocolClient client = ProtocolClient.connect("localhost", rude.getLocalPort(), 2000, traffic::add)) {
+      try (ProtocolClient client = TestClients.connect(rude.getLocalPort(), traffic::add)) {
         IOException failure = assertThrows(IOException.class, () -> client.ask(request(REGISTER)));
         assertTrue(failure.getMessage().contains("sem responder"), failure.getMessage());
       }

@@ -16,8 +16,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 
-import com.google.gson.JsonParser;
-
+import reservas.protocol.TestJson;
 import reservas.protocol.ProtocolException;
 import reservas.protocol.Status;
 
@@ -27,8 +26,7 @@ class StoreConcurrencyTest {
   private static final int THREADS = 20;
 
   private final SqliteStore store = SqliteStore.openInMemory();
-  private final Clock clock = Clock.fixed(T0, ZoneOffset.UTC);
-  private final TokenGenerator tokens = () -> "a".repeat(64);
+  private final ServerContext context = new ServerContext(store, Clock.fixed(T0, ZoneOffset.UTC), () -> "a".repeat(64));
   private final List<Throwable> failures = Collections.synchronizedList(new ArrayList<>());
 
   @AfterEach
@@ -41,8 +39,8 @@ class StoreConcurrencyTest {
   }
 
   private void register(String user) {
-    AuthHandlers.register(JsonParser.parseString("{\"op\":\"register\",\"email\":\"" + user
-        + "@email.com\",\"user\":\"" + user + "\",\"password\":\"senha123\"}").getAsJsonObject(), store, clock, tokens);
+    AuthHandlers.register(TestJson.object("{'op':'register','email':'" + user
+        + "@email.com','user':'" + user + "','password':'senha123'}"), context);
   }
 
   // Todas as threads largam juntas

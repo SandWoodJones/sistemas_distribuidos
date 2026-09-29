@@ -17,6 +17,7 @@ import com.google.gson.JsonObject;
 
 import reservas.protocol.Codec;
 import reservas.protocol.LineReader;
+import reservas.protocol.Messages;
 import reservas.protocol.ProtocolException;
 import reservas.protocol.Responses;
 import reservas.protocol.Status;
@@ -60,8 +61,9 @@ final class Connection implements Runnable {
     LineReader lines = new LineReader(new BufferedInputStream(open.getInputStream()));
     Writer out = new OutputStreamWriter(open.getOutputStream(), StandardCharsets.UTF_8);
 
-    while (exchange(lines, out)) {
-      // ...
+    boolean connected = true;
+    while (connected) {
+      connected = exchange(lines, out);
     }
   }
 
@@ -83,7 +85,7 @@ final class Connection implements Runnable {
       response = report(e);
     } catch (RuntimeException e) {
       log.error("falha inesperada tratando a linha", e);
-      response = Responses.error(Status.INTERNAL_SERVER_ERROR, Codec.INTERNAL_ERROR);
+      response = Responses.error(Status.INTERNAL_SERVER_ERROR, Messages.INTERNAL_ERROR);
     }
 
     send(out, response);
@@ -102,7 +104,7 @@ final class Connection implements Runnable {
       return Codec.encode(response);
     } catch (ProtocolException e) {
       log.error(e.getMessage(), e);
-      return Codec.encode(Responses.error(Status.INTERNAL_SERVER_ERROR, Codec.INTERNAL_ERROR));
+      return Codec.encode(Responses.error(Status.INTERNAL_SERVER_ERROR, Messages.INTERNAL_ERROR));
     }
   }
 

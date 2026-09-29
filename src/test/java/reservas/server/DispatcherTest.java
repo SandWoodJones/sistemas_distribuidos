@@ -15,10 +15,11 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
 
+import reservas.protocol.TestJson;
 import reservas.protocol.Codec;
 import reservas.protocol.Fields;
+import reservas.protocol.Messages;
 import reservas.protocol.Op;
 import reservas.protocol.ProtocolException;
 import reservas.protocol.Responses;
@@ -38,7 +39,7 @@ class DispatcherTest {
   }
 
   private static JsonObject request(String json) {
-    return JsonParser.parseString(json).getAsJsonObject();
+    return TestJson.object(json);
   }
 
   private static void assertResponse(JsonObject response, String op, Status status, String message) {
@@ -50,50 +51,50 @@ class DispatcherTest {
   // Sem `op` não há resposta
   @Test
   void answersErrorWhenOpIsMissingOrNotAString() {
-    for (String json : new String[] { "{}", "{\"op\":42}", "{\"op\":null}", "{\"op\":[\"login\"]}" }) {
-      assertResponse(dispatcher.handle(request(json)), Op.ERROR_OP, Status.BAD_REQUEST, Codec.INVALID_REQUEST);
+    for (String json : new String[] { "{}", "{'op':42}", "{'op':null}", "{'op':['login']}" }) {
+      assertResponse(dispatcher.handle(request(json)), Op.ERROR_OP, Status.BAD_REQUEST, Messages.INVALID_REQUEST);
     }
   }
 
   @Test
   void answersErrorForAnOpOutsideTheProtocol() {
-    assertResponse(dispatcher.handle(request("{\"op\":\"fazer_cafe\"}")), Op.ERROR_OP, Status.BAD_REQUEST,
-        Codec.UNKNOWN_OPERATION);
+    assertResponse(dispatcher.handle(request("{'op':'fazer_cafe'}")), Op.ERROR_OP, Status.BAD_REQUEST,
+        Messages.UNKNOWN_OPERATION);
   }
 
   @Test
   void opIsCaseSensitive() {
-    assertResponse(dispatcher.handle(request("{\"op\":\"LOGIN\"}")), Op.ERROR_OP, Status.BAD_REQUEST,
-        Codec.UNKNOWN_OPERATION);
+    assertResponse(dispatcher.handle(request("{'op':'LOGIN'}")), Op.ERROR_OP, Status.BAD_REQUEST,
+        Messages.UNKNOWN_OPERATION);
   }
 
   @Test
   void separatesUnimplementedFromUnknownInTheDiagnosis() {
-    assertResponse(dispatcher.handle(request("{\"op\":\"login\"}")), Op.ERROR_OP, Status.BAD_REQUEST,
-        Codec.UNKNOWN_OPERATION);
+    assertResponse(dispatcher.handle(request("{'op':'login'}")), Op.ERROR_OP, Status.BAD_REQUEST,
+        Messages.UNKNOWN_OPERATION);
     assertTrue(reported.get(0).getMessage().contains("nao tem handler registrado"), reported.get(0).getMessage());
 
-    dispatcher.handle(request("{\"op\":\"fazer_cafe\"}"));
+    dispatcher.handle(request("{'op':'fazer_cafe'}"));
     assertTrue(reported.get(1).getMessage().contains("nao existe"), reported.get(1).getMessage());
   }
 
   @Test
   void routesToTheRegisteredHandler() {
     JsonObject expected = Responses.of(Op.LOGIN, Status.OK, "Login realizado com sucesso");
-    dispatcher.register(Op.LOGIN, (request, store, clock, tokens) -> expected);
+    dispatcher.register(Op.LOGIN, (json, context) -> expected);
 
-    assertSame(expected, dispatcher.handle(request("{\"op\":\"login\"}")));
+    assertSame(expected, dispatcher.handle(request("{'op':'login'}")));
     assertTrue(reported.isEmpty(), "sucesso nao gera diagnostico");
   }
 
   // `op` implementado responde com o próprio nome, não com `error`
   @Test
   void answersWithTheOpNameWhenAHandlerRejects() {
-    dispatcher.register(Op.LOGOUT, (request, store, clock, tokens) -> {
+    dispatcher.register(Op.LOGOUT, (json, context) -> {
       throw ProtocolException.unauthorized("Token invalido ou expirado", "sessao inexistente");
     });
 
-    assertResponse(dispatcher.handle(request("{\"op\":\"logout\"}")), Op.LOGOUT.responseName(), Status.UNAUTHORIZED,
+    assertResponse(dispatcher.handle(request("{'op':'logout'}")), Op.LOGOUT.responseName(), Status.UNAUTHORIZED,
         "Token invalido ou expirado");
     assertEquals(1, reported.size());
     assertTrue(reported.get(0).getMessage().contains("sessao inexistente"));
@@ -102,21 +103,21 @@ class DispatcherTest {
   // Bug no handler vira 500, nunca uma conexão sem resposta
   @Test
   void turnsAnUnexpectedExceptionIntoInternalError() {
-    dispatcher.register(Op.READ_USER, (request, store, clock, tokens) -> {
+    dispatcher.register(Op.READ_USER, (json, context) -> {
       throw new NullPointerException("esqueci de checar");
     });
 
-    assertResponse(dispatcher.handle(request("{\"op\":\"read_user\"}")), Op.READ_USER.responseName(),
-        Status.INTERNAL_SERVER_ERROR, Codec.INTERNAL_ERROR);
+    assertResponse(dispatcher.handle(request("{'op':'read_user'}")), Op.READ_USER.responseName(),
+        Status.INTERNAL_SERVER_ERROR, Messages.INTERNAL_ERROR);
   }
 
   // O 500 enxuto na rede vem com a causa original no diagnóstico
   @Test
   void keepsTheCauseOfAnUnexpectedException() {
-    dispatcher.register(Op.READ_USER, (request, store, clock, tokens) -> {
+    dispatcher.register(Op.READ_USER, (json, context) -> {
       throw new NullPointerException("esqueci de checar");
     });
-    dispatcher.handle(request("{\"op\":\"read_user\",\"token\":\"abc\"}"));
+    dispatcher.handle(request("{'op':'read_user','token':'abc'}"));
 
     ProtocolException failure = reported.get(0);
     assertInstanceOf(NullPointerException.class, failure.getCause());
@@ -126,12 +127,12 @@ class DispatcherTest {
 
   @Test
   void everyResponseCarriesTheThreeMandatoryFields() {
-    dispatcher.register(Op.REGISTER, (request, store, clock, tokens) -> {
+    dispatcher.register(Op.REGISTER, (json, context) -> {
       throw new IllegalStateException("qualquer coisa");
     });
 
-    for (String json : new String[] { "{}", "{\"op\":\"fazer_cafe\"}", "{\"op\":\"login\"}",
-        "{\"op\":\"register\"}" }) {
+    for (String json : new String[] { "{}", "{'op':'fazer_cafe'}", "{'op':'login'}",
+        "{'op':'register'}" }) {
       JsonObject response = dispatcher.handle(request(json));
       for (String field : new String[] { Fields.OP, Fields.STATUS, Fields.MESSAGE }) {
         assertTrue(response.has(field), field + " ausente em " + response);

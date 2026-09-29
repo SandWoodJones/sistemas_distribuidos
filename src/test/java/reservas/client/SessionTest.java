@@ -5,9 +5,6 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
-import java.time.Clock;
-import java.time.Instant;
-import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -19,46 +16,27 @@ import org.junit.jupiter.api.Timeout;
 import com.google.gson.JsonObject;
 
 import reservas.protocol.Fields;
-import reservas.server.AccountHandlers;
-import reservas.server.AuthHandlers;
-import reservas.server.Dispatcher;
-import reservas.server.RandomTokenGenerator;
-import reservas.server.ServerSocketLoop;
-import reservas.server.SqliteStore;
+import reservas.server.TestServer;
 
 @Timeout(10)
 class SessionTest {
-  private static final Instant T0 = Instant.parse("2026-09-09T17:32:10Z");
   private static final String EMAIL = "joao.silva@email.com";
 
+  private TestServer server;
   private final List<String> traffic = new ArrayList<>();
 
-  private SqliteStore store;
-  private ServerSocketLoop server;
-  private Thread accepting;
   private Session session;
 
   @BeforeEach
   void startServer() throws IOException {
-    store = SqliteStore.openInMemory();
-    Dispatcher dispatcher = new Dispatcher(store, Clock.fixed(T0, ZoneId.of("America/Sao_Paulo")),
-        new RandomTokenGenerator(), failure -> {
-        });
-    AuthHandlers.install(dispatcher);
-    AccountHandlers.install(dispatcher);
-
-    server = ServerSocketLoop.bind(0, dispatcher);
-    accepting = new Thread(server::acceptForever, "accept-test");
-    accepting.start();
-    session = new Session(ProtocolClient.connect("localhost", server.port(), 2000, traffic::add));
+    server = TestServer.start();
+    session = new Session(TestClients.connect(server.port(), traffic::add));
   }
 
   @AfterEach
-  void stopServer() throws IOException, InterruptedException {
+  void stopServer() throws IOException {
     session.close();
     server.close();
-    accepting.join(2000);
-    store.close();
   }
 
   private static void assertStatus(String status, JsonObject response) {

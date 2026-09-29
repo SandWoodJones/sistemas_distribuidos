@@ -36,7 +36,7 @@ public final class ProtocolException extends RuntimeException {
   }
 
   public static ProtocolException internal(String detail, Throwable cause) {
-    return new ProtocolException(Status.INTERNAL_SERVER_ERROR, Codec.INTERNAL_ERROR, detail, cause);
+    return new ProtocolException(Status.INTERNAL_SERVER_ERROR, Messages.INTERNAL_ERROR, detail, cause);
   }
 
   public Status status() {

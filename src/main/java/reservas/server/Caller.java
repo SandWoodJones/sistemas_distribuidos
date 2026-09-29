@@ -1,6 +1,5 @@
 package reservas.server;
 
-import java.time.Clock;
 import java.time.Instant;
 
 import reservas.protocol.Fields;
@@ -13,11 +12,12 @@ public record Caller(User user, Session session) {
   static final String UNAUTHORIZED = "Token invalido ou expirado";
 
   // Token ausente é 401, presente e fora do formato é 400
-  static Caller authenticate(Request request, SqliteStore store, Clock clock) {
+  static Caller authenticate(Request request, ServerContext context) {
     String token = request.optional(Fields.TOKEN, Formats.TOKEN)
         .orElseThrow(() -> ProtocolException.unauthorized(UNAUTHORIZED, "token ausente ou vazio"));
 
-    Instant now = clock.instant();
+    SqliteStore store = context.store();
+    Instant now = context.clock().instant();
     Session session = store.findSession(token)
         .orElseThrow(() -> ProtocolException.unauthorized(UNAUTHORIZED, "token " + token + " nao abre nenhuma sessao"));
 

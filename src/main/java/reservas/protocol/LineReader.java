@@ -47,7 +47,7 @@ public final class LineReader {
   }
 
   private static ProtocolException tooLarge(ByteArrayOutputStream line, long discarded) {
-    return ProtocolException.badRequest(Codec.MESSAGE_TOO_LARGE,
+    return ProtocolException.badRequest(Messages.MESSAGE_TOO_LARGE,
         Codec.diagnosis(
             "linha passou de " + Codec.MAX_MESSAGE_BYTES + " bytes, mais " + discarded + " descartados ate o `\\n`",
             text(line)));

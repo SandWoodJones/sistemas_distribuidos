@@ -15,8 +15,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
 
+import reservas.protocol.TestJson;
 import reservas.protocol.Fields;
 import reservas.protocol.ProtocolException;
 import reservas.protocol.Role;
@@ -27,13 +27,13 @@ class AccountHandlersTest {
   private static final String TOKEN = "a".repeat(64);
   private static final String ADMIN_TOKEN = "b".repeat(64);
 
-  private static final String UPDATE = "{\"op\":\"update_user\",\"token\":\"" + TOKEN + "\"";
+  private static final String UPDATE = "{'op':'update_user','token':'" + TOKEN + "'";
 
-  private static final String DELETE = "{\"op\":\"delete_user\",\"token\":\"" + TOKEN + "\"";
+  private static final String DELETE = "{'op':'delete_user','token':'" + TOKEN + "'";
 
   private final SqliteStore store = SqliteStore.openInMemory();
-  private final Clock clock = Clock.fixed(T0, ZoneId.of("America/Sao_Paulo"));
-  private final TokenGenerator tokens = () -> TOKEN;
+  private final ServerContext context = new ServerContext(store, Clock.fixed(T0, ZoneId.of("America/Sao_Paulo")),
+      () -> TOKEN);
   private User joao;
 
   @BeforeEach
@@ -48,13 +48,12 @@ class AccountHandlersTest {
   }
 
   private JsonObject readUser(String token) {
-    return readUser(token, clock);
+    return readUser(token, context.clock());
   }
 
   private JsonObject readUser(String token, Clock at) {
     return AccountHandlers.readUser(
-        JsonParser.parseString("{\"op\":\"read_user\",\"token\":\"" + token + "\"}").getAsJsonObject(), store, at,
-        tokens);
+        TestJson.object("{'op':'read_user','token':'" + token + "'}"), new ServerContext(store, at, context.tokens()));
   }
 
   private ProtocolException readUserFails(String token) {
@@ -62,7 +61,7 @@ class AccountHandlersTest {
   }
 
   private JsonObject updateUser(String body) {
-    return AccountHandlers.updateUser(JsonParser.parseString(body).getAsJsonObject(), store, clock, tokens);
+    return AccountHandlers.updateUser(TestJson.object(body), context);
   }
 
   private ProtocolException updateUserFails(String body) {
@@ -70,7 +69,7 @@ class AccountHandlersTest {
   }
 
   private JsonObject deleteUser(String body) {
-    return AccountHandlers.deleteUser(JsonParser.parseString(body).getAsJsonObject(), store, clock, tokens);
+    return AccountHandlers.deleteUser(TestJson.object(body), context);
   }
 
   private ProtocolException deleteUserFails(String body) {
@@ -124,7 +123,7 @@ class AccountHandlersTest {
   // Trocar o proprio `user` não derruba a sessão
   @Test
   void changesTheUserAndKeepsTheToken() {
-    JsonObject response = updateUser(UPDATE + ",\"user\":\"joaosilva\"}");
+    JsonObject response = updateUser(UPDATE + ",'user':'joaosilva'}");
 
     assertEquals(List.of(Fields.OP, Fields.STATUS, Fields.MESSAGE), List.copyOf(response.keySet()));
     assertEquals("update_user_response", response.get(Fields.OP).getAsString());
@@ -136,21 +135,21 @@ class AccountHandlersTest {
 
   @Test
   void changesThePassword() {
-    updateUser(UPDATE + ",\"password\":\"novasenha1\"}");
+    updateUser(UPDATE + ",'password':'novasenha1'}");
 
     assertEquals("novasenha1", store.findUserById(joao.id()).orElseThrow().password());
   }
 
   @Test
   void treatsEmptyAsNoChange() {
-    updateUser(UPDATE + ",\"user\":\"\",\"password\":\"\"}");
+    updateUser(UPDATE + ",'user':'','password':''}");
 
     assertEquals(joao, store.findUserById(joao.id()).orElseThrow());
   }
 
   @Test
   void rejectsNullFields() {
-    for (String body : new String[] { UPDATE + ",\"user\":null}", UPDATE + ",\"password\":null}" }) {
+    for (String body : new String[] { UPDATE + ",'user':null}", UPDATE + ",'password':null}" }) {
       ProtocolException failure = updateUserFails(body);
       assertEquals(Status.BAD_REQUEST, failure.status(), body);
       assertEquals("Dados em formato invalido", failure.wireMessage(), body);
@@ -159,8 +158,8 @@ class AccountHandlersTest {
 
   @Test
   void rejectsTheEmailKeyEvenWhenEmpty() {
-    for (String body : new String[] { UPDATE + ",\"email\":\"outro@email.com\"}", UPDATE + ",\"email\":\"\"}",
-        UPDATE + ",\"email\":null}" }) {
+    for (String body : new String[] { UPDATE + ",'email':'outro@email.com'}", UPDATE + ",'email':''}",
+        UPDATE + ",'email':null}" }) {
       ProtocolException failure = updateUserFails(body);
       assertEquals(Status.BAD_REQUEST, failure.status(), body);
       assertEquals("Dados em formato invalido", failure.wireMessage(), body);
@@ -170,8 +169,8 @@ class AccountHandlersTest {
 
   @Test
   void rejectsValuesOutsideTheFormat() {
-    for (String body : new String[] { UPDATE + ",\"user\":\"joao123\"}", UPDATE + ",\"user\":\"JOAO\"}",
-        UPDATE + ",\"password\":\"senha 123\"}" }) {
+    for (String body : new String[] { UPDATE + ",'user':'joao123'}", UPDATE + ",'user':'JOAO'}",
+        UPDATE + ",'password':'senha 123'}" }) {
       assertEquals(Status.BAD_REQUEST, updateUserFails(body).status(), body);
     }
   }
@@ -180,7 +179,7 @@ class AccountHandlersTest {
   void rejectsAUserAlreadyTaken() {
     store.createUser("maria", "maria@email.com", "senha123", Role.USER, T0).orElseThrow();
 
-    ProtocolException failure = updateUserFails(UPDATE + ",\"user\":\"maria\"}");
+    ProtocolException failure = updateUserFails(UPDATE + ",'user':'maria'}");
     assertEquals(Status.CONFLICT, failure.status());
     assertEquals("Usuario ja esta em uso", failure.wireMessage());
   }
@@ -188,13 +187,13 @@ class AccountHandlersTest {
   // Reenviar o proprio nome nao colide consigo mesmo
   @Test
   void acceptsTheOwnUserUnchanged() {
-    assertEquals("200", updateUser(UPDATE + ",\"user\":\"joao\"}").get(Fields.STATUS).getAsString());
+    assertEquals("200", updateUser(UPDATE + ",'user':'joao'}").get(Fields.STATUS).getAsString());
   }
 
   @Test
   void refusesAnUpdateWithATokenWithoutASession() {
     ProtocolException failure = assertThrows(ProtocolException.class,
-        () -> updateUser("{\"op\":\"update_user\",\"token\":\"" + "c".repeat(64) + "\",\"user\":\"joaosilva\"}"));
+        () -> updateUser("{'op':'update_user','token':'" + "c".repeat(64) + "','user':'joaosilva'}"));
 
     assertEquals(Status.UNAUTHORIZED, failure.status());
     assertEquals("Token invalido ou expirado", failure.wireMessage());
@@ -203,7 +202,7 @@ class AccountHandlersTest {
   // A sessao cai com o cadastro por `ON DELETE CASCADE`
   @Test
   void removesTheAccountAndTheSession() {
-    JsonObject response = deleteUser(DELETE + ",\"password\":\"senha123\"}");
+    JsonObject response = deleteUser(DELETE + ",'password':'senha123'}");
 
     assertEquals(List.of(Fields.OP, Fields.STATUS, Fields.MESSAGE), List.copyOf(response.keySet()));
     assertEquals("delete_user_response", response.get(Fields.OP).getAsString());
@@ -216,7 +215,7 @@ class AccountHandlersTest {
   // Senha errada é 401, e o cadastro fica
   @Test
   void refusesTheWrongPasswordAndKeepsTheAccount() {
-    ProtocolException failure = deleteUserFails(DELETE + ",\"password\":\"errada\"}");
+    ProtocolException failure = deleteUserFails(DELETE + ",'password':'errada'}");
 
     assertEquals(Status.UNAUTHORIZED, failure.status());
     assertEquals("Token invalido ou expirado", failure.wireMessage());
@@ -226,8 +225,8 @@ class AccountHandlersTest {
 
   @Test
   void rejectsAnAbsentOrMalformedPassword() {
-    for (String body : new String[] { DELETE + "}", DELETE + ",\"password\":\"\"}",
-        DELETE + ",\"password\":\"senha 123\"}", DELETE + ",\"password\":null}" }) {
+    for (String body : new String[] { DELETE + "}", DELETE + ",'password':''}",
+        DELETE + ",'password':'senha 123'}", DELETE + ",'password':null}" }) {
       ProtocolException failure = deleteUserFails(body);
       assertEquals(Status.BAD_REQUEST, failure.status(), body);
       assertEquals("Senha em formato invalido", failure.wireMessage(), body);
@@ -241,7 +240,7 @@ class AccountHandlersTest {
     store.createSession(ADMIN_TOKEN, maria.id(), T0).orElseThrow();
 
     ProtocolException failure = assertThrows(ProtocolException.class,
-        () -> deleteUser("{\"op\":\"delete_user\",\"token\":\"" + ADMIN_TOKEN + "\",\"password\":\"senha123\"}"));
+        () -> deleteUser("{'op':'delete_user','token':'" + ADMIN_TOKEN + "','password':'senha123'}"));
     assertEquals(Status.FORBIDDEN, failure.status());
     assertEquals("Nao e possivel remover o ultimo administrador", failure.wireMessage());
     assertTrue(store.findUserById(maria.id()).isPresent());
@@ -254,7 +253,7 @@ class AccountHandlersTest {
     store.createSession(ADMIN_TOKEN, maria.id(), T0).orElseThrow();
 
     assertEquals("200",
-        deleteUser("{\"op\":\"delete_user\",\"token\":\"" + ADMIN_TOKEN + "\",\"password\":\"senha123\"}")
+        deleteUser("{'op':'delete_user','token':'" + ADMIN_TOKEN + "','password':'senha123'}")
             .get(Fields.STATUS).getAsString());
     assertTrue(store.findUserById(maria.id()).isEmpty());
   }

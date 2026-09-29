@@ -10,9 +10,6 @@ import java.io.OutputStreamWriter;
 import java.io.Writer;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
-import java.time.Clock;
-import java.time.Instant;
-import java.time.ZoneId;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -21,36 +18,22 @@ import org.junit.jupiter.api.Timeout;
 
 import com.google.gson.JsonObject;
 
+import reservas.protocol.TestJson;
 import reservas.protocol.Codec;
 import reservas.protocol.Fields;
 
 @Timeout(10)
 class ServerSocketLoopTest {
-  private static final Instant T0 = Instant.parse("2026-09-09T17:32:10Z");
-
-  private SqliteStore store;
-  private ServerSocketLoop server;
-  private Thread accepting;
+  private TestServer server;
 
   @BeforeEach
   void startServer() throws IOException {
-    store = SqliteStore.openInMemory();
-    Dispatcher dispatcher = new Dispatcher(store, Clock.fixed(T0, ZoneId.of("America/Sao_Paulo")),
-        new RandomTokenGenerator(), failure -> {
-        });
-    AuthHandlers.install(dispatcher);
-    AccountHandlers.install(dispatcher);
-
-    server = ServerSocketLoop.bind(0, dispatcher);
-    accepting = new Thread(server::acceptForever, "accept-test");
-    accepting.start();
+    server = TestServer.start();
   }
 
   @AfterEach
-  void stopServer() throws InterruptedException {
+  void stopServer() {
     server.close();
-    accepting.join(2000);
-    store.close();
   }
 
   private Client connect() throws IOException {
@@ -58,7 +41,7 @@ class ServerSocketLoopTest {
   }
 
   private static String register(String user, String email) {
-    return "{\"op\":\"register\",\"email\":\"" + email + "\",\"user\":\"" + user + "\",\"password\":\"senha123\"}";
+    return "{'op':'register','email':'" + email + "','user':'" + user + "','password':'senha123'}";
   }
 
   private static void assertStatus(String status, JsonObject response) {
@@ -71,12 +54,12 @@ class ServerSocketLoopTest {
     try (Client client = connect()) {
       assertStatus("201", client.ask(register("joao", "joao.silva@email.com")));
 
-      JsonObject login = client.ask("{\"op\":\"login\",\"email\":\"joao.silva@email.com\",\"password\":\"senha123\"}");
+      JsonObject login = client.ask("{'op':'login','email':'joao.silva@email.com','password':'senha123'}");
       assertStatus("200", login);
       String token = login.get(Fields.TOKEN).getAsString();
 
-      assertStatus("200", client.ask("{\"op\":\"read_user\",\"token\":\"" + token + "\"}"));
-      assertStatus("200", client.ask("{\"op\":\"logout\",\"token\":\"" + token + "\"}"));
+      assertStatus("200", client.ask("{'op':'read_user','token':'" + token + "'}"));
+      assertStatus("200", client.ask("{'op':'logout','token':'" + token + "'}"));
     }
   }
 
@@ -84,7 +67,7 @@ class ServerSocketLoopTest {
   @Test
   void answersAnOversizedLineAndKeepsGoing() throws IOException {
     try (Client client = connect()) {
-      JsonObject rejected = client.ask("{\"op\":\"login\",\"password\":\"" + "x".repeat(9000) + "\"}");
+      JsonObject rejected = client.ask("{'op':'login','password':'" + "x".repeat(9000) + "'}");
       assertEquals("error", rejected.get(Fields.OP).getAsString());
       assertStatus("400", rejected);
       assertEquals("Mensagem excede o tamanho maximo", rejected.get(Fields.MESSAGE).getAsString());
@@ -96,7 +79,7 @@ class ServerSocketLoopTest {
   @Test
   void answersMalformedJsonWithoutClosing() throws IOException {
     try (Client client = connect()) {
-      JsonObject rejected = client.ask("{\"op\":\"login\",");
+      JsonObject rejected = client.ask("{'op':'login',");
       assertEquals("error", rejected.get(Fields.OP).getAsString());
       assertStatus("400", rejected);
       assertEquals("Requisicao invalida", rejected.get(Fields.MESSAGE).getAsString());
@@ -112,14 +95,14 @@ class ServerSocketLoopTest {
       assertStatus("201", first.ask(register("joao", "joao.silva@email.com")));
       assertStatus("201", second.ask(register("maria", "maria@email.com")));
 
-      String one = first.ask("{\"op\":\"login\",\"email\":\"joao.silva@email.com\",\"password\":\"senha123\"}")
+      String one = first.ask("{'op':'login','email':'joao.silva@email.com','password':'senha123'}")
           .get(Fields.TOKEN).getAsString();
-      String two = second.ask("{\"op\":\"login\",\"email\":\"maria@email.com\",\"password\":\"senha123\"}")
+      String two = second.ask("{'op':'login','email':'maria@email.com','password':'senha123'}")
           .get(Fields.TOKEN).getAsString();
 
       assertNotEquals(one, two);
-      assertStatus("200", first.ask("{\"op\":\"read_user\",\"token\":\"" + one + "\"}"));
-      assertStatus("200", second.ask("{\"op\":\"read_user\",\"token\":\"" + two + "\"}"));
+      assertStatus("200", first.ask("{'op':'read_user','token':'" + one + "'}"));
+      assertStatus("200", second.ask("{'op':'read_user','token':'" + two + "'}"));
     }
   }
 
@@ -135,8 +118,9 @@ class ServerSocketLoopTest {
       out = new OutputStreamWriter(socket.getOutputStream(), StandardCharsets.UTF_8);
     }
 
+    // A linha vai crua para o socket, entao a aspa simples vira dupla aqui
     JsonObject ask(String line) throws IOException {
-      out.write(line + "\n");
+      out.write(TestJson.json(line) + "\n");
       out.flush();
       return Codec.decode(in.readLine());
     }
