@@ -38,6 +38,10 @@ public final class SqliteStore implements AutoCloseable {
     return database.queryOne("SELECT * FROM users WHERE email = ?", SqliteStore::toUser, email);
   }
 
+  public Optional<User> findUserById(long id) {
+    return database.queryOne("SELECT * FROM users WHERE id = ?", SqliteStore::toUser, id);
+  }
+
   // Vazio se `name` ou `email` já estão cadastrados
   public synchronized Optional<User> createUser(String name, String email, String password, Role role,
       Instant createdAt) {
