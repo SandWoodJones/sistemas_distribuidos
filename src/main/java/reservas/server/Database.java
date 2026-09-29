@@ -12,6 +12,7 @@ import java.util.Optional;
 import reservas.protocol.Codec;
 import reservas.protocol.ProtocolException;
 
+// Uma conexão JDBC por instância, todo `statement` é serializado aqui. Operações compostas precisam de `synchronized`
 final class Database implements AutoCloseable {
   private final String url;
   private final Connection connection;
@@ -31,7 +32,7 @@ final class Database implements AutoCloseable {
     }
   }
 
-  void execute(String sql) {
+  synchronized void execute(String sql) {
     try (Statement statement = connection.createStatement()) {
       statement.execute(sql);
     } catch (SQLException e) {
@@ -39,7 +40,7 @@ final class Database implements AutoCloseable {
     }
   }
 
-  <T> Optional<T> queryOne(String sql, RowMapper<T> mapper, Object... values) {
+  synchronized <T> Optional<T> queryOne(String sql, RowMapper<T> mapper, Object... values) {
     try (PreparedStatement statement = prepare(sql, values); ResultSet rows = statement.executeQuery()) {
       return rows.next() ? Optional.of(mapper.map(rows)) : Optional.empty();
     } catch (SQLException e) {
@@ -47,7 +48,7 @@ final class Database implements AutoCloseable {
     }
   }
 
-  int queryInt(String sql, Object... values) {
+  synchronized int queryInt(String sql, Object... values) {
     try (PreparedStatement statement = prepare(sql, values); ResultSet rows = statement.executeQuery()) {
       rows.next();
       return rows.getInt(1);
@@ -57,7 +58,7 @@ final class Database implements AutoCloseable {
   }
 
   // Devolve a chave gerada por `AUTOINCREMENT`
-  long insert(String sql, Object... values) {
+  synchronized long insert(String sql, Object... values) {
     try (PreparedStatement statement = prepare(sql, values, Statement.RETURN_GENERATED_KEYS)) {
       statement.executeUpdate();
       try (ResultSet keys = statement.getGeneratedKeys()) {
@@ -70,7 +71,7 @@ final class Database implements AutoCloseable {
   }
 
   // Devolve quantas linhas mudaram
-  int update(String sql, Object... values) {
+  synchronized int update(String sql, Object... values) {
     try (PreparedStatement statement = prepare(sql, values)) {
       return statement.executeUpdate();
     } catch (SQLException e) {
@@ -79,7 +80,7 @@ final class Database implements AutoCloseable {
   }
 
   @Override
-  public void close() {
+  public synchronized void close() {
     try {
       connection.close();
     } catch (SQLException e) {
