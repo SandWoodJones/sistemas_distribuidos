@@ -1,7 +1,10 @@
 package reservas.client;
 
 import java.awt.BorderLayout;
+import java.awt.Color;
+import java.awt.Dimension;
 import java.awt.FlowLayout;
+import java.awt.Font;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
@@ -10,6 +13,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 import javax.swing.BorderFactory;
+import javax.swing.Box;
 import javax.swing.BoxLayout;
 import javax.swing.JButton;
 import javax.swing.JComponent;
@@ -18,6 +22,7 @@ import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JPasswordField;
 import javax.swing.JScrollPane;
+import javax.swing.JSeparator;
 import javax.swing.JTabbedPane;
 import javax.swing.JTextArea;
 import javax.swing.JTextField;
@@ -30,6 +35,9 @@ import reservas.protocol.Fields;
 // Janela do cliente
 public final class ClientWindow extends JFrame {
   private static final int TIMEOUT_MILLIS = 10_000;
+  private static final int LABEL_WIDTH = 120;
+  private static final Color OK = new Color(0x1B, 0x7F, 0x3B);
+  private static final Color FAILED = new Color(0xB0, 0x00, 0x20);
 
   private final ExecutorService network = Executors.newSingleThreadExecutor();
   private final List<JButton> actions = new ArrayList<>();
@@ -39,7 +47,7 @@ public final class ClientWindow extends JFrame {
   private final JButton connection = new JButton("Conectar");
   private final JLabel status = new JLabel("desconectado");
 
-  private final JTextArea messages = new JTextArea(16, 90);
+  private final JTextArea messages = new JTextArea(20, 58);
 
   private Session session;
 
@@ -48,23 +56,28 @@ public final class ClientWindow extends JFrame {
     setDefaultCloseOperation(DISPOSE_ON_CLOSE);
 
     add(connectionBar(), BorderLayout.NORTH);
-    add(operations(), BorderLayout.CENTER);
-    add(messagePane(), BorderLayout.SOUTH);
+    add(operations(), BorderLayout.WEST);
+    add(messagePane(), BorderLayout.CENTER);
 
     connection.addActionListener(event -> toggleConnection());
     setConnected(false);
     pack();
+    setMinimumSize(getSize());
     setLocationRelativeTo(null);
   }
 
   private JPanel connectionBar() {
-    JPanel bar = new JPanel(new FlowLayout(FlowLayout.LEFT));
-    bar.add(new JLabel("IP:"));
-    bar.add(host);
-    bar.add(new JLabel("Porta:"));
-    bar.add(port);
-    bar.add(connection);
-    bar.add(status);
+    JPanel controls = new JPanel(new FlowLayout(FlowLayout.LEFT));
+    controls.add(new JLabel("IP:"));
+    controls.add(host);
+    controls.add(new JLabel("Porta:"));
+    controls.add(port);
+    controls.add(connection);
+    
+    JPanel bar = new JPanel(new BorderLayout());
+    bar.setBorder(BorderFactory.createEmptyBorder(6, 8, 6, 8));
+    bar.add(controls, BorderLayout.WEST);
+    bar.add(status, BorderLayout.EAST);
     return bar;
   }
 
@@ -99,10 +112,12 @@ public final class ClientWindow extends JFrame {
   private JPanel accountTab() {
     Form form = new Form();
     form.button("Ler meus dados", () -> session.readUser());
+    form.separator();
 
     JTextField user = form.field("Novo usuario");
     JPasswordField password = form.password("Nova senha");
     form.button("Atualizar", () -> session.updateUser(text(user), secret(password)));
+    form.separator();
 
     JPasswordField confirm = form.password("Confirme a senha");
     form.button("Remover conta", () -> session.deleteUser(secret(confirm)));
@@ -112,6 +127,9 @@ public final class ClientWindow extends JFrame {
 
   private JScrollPane messagePane() {
     messages.setEditable(false);
+    messages.setLineWrap(true);
+    messages.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
+
     JScrollPane scroll = new JScrollPane(messages);
     scroll.setBorder(BorderFactory.createTitledBorder("Mensagens enviadas e recebidas"));
     return scroll;
@@ -173,9 +191,13 @@ public final class ClientWindow extends JFrame {
     network.execute(() -> {
       try {
         JsonObject response = call.call();
-        onEdt(() -> status.setText(summary(response)));
+        onEdt(() -> showResult(response));
       } catch (Exception e) {
-        onEdt(() -> append("falha na requisicao: " + e));
+        onEdt(() -> {
+          append("falha na requisicao: " + e);
+          status.setText("falha na requisicao");
+          status.setForeground(FAILED);
+        });
       }
     });
   }
@@ -185,6 +207,7 @@ public final class ClientWindow extends JFrame {
     host.setEnabled(!connected);
     port.setEnabled(!connected);
     status.setText(connected ? "conectado" : "desconectado");
+    status.setForeground(Color.DARK_GRAY);
 
     for (JButton action : actions) {
       action.setEnabled(connected);
@@ -206,6 +229,12 @@ public final class ClientWindow extends JFrame {
     return response.get(Fields.STATUS).getAsString() + " " + response.get(Fields.MESSAGE).getAsString();
   }
 
+  private void showResult(JsonObject response) {
+    String code = response.get(Fields.STATUS).getAsString();
+    status.setText(summary(response));
+    status.setForeground(code.startsWith("2") ? OK : FAILED);
+  }
+
   private static String text(JTextField field) {
     return field.getText().strip();
   }
@@ -224,10 +253,11 @@ public final class ClientWindow extends JFrame {
     private Form() {
       panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
       panel.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
+      panel.add(Box.createVerticalGlue());
     }
 
     private JTextField field(String label) {
-      return labelled(label, new JTextField());
+      return labelled(label, new JTextField(18));
     }
 
     private JPasswordField password(String label) {
@@ -238,22 +268,43 @@ public final class ClientWindow extends JFrame {
       JButton button = new JButton(label);
       button.setEnabled(false);
       button.addActionListener(event -> send(call));
-
       actions.add(button);
-      panel.add(button);
+
+      JPanel row = new JPanel(new FlowLayout(FlowLayout.CENTER));
+      row.setBorder(BorderFactory.createEmptyBorder(12, 0, 4, 0));
+      row.add(button);
+      fixHeight(row);
+      panel.add(row);
     }
 
     private JPanel panel() {
+      panel.add(Box.createVerticalGlue());
       return panel;
     }
 
+    private void separator() {
+      JPanel line = new JPanel(new BorderLayout());
+      line.setBorder(BorderFactory.createEmptyBorder(8, 4, 8, 4));
+      line.add(new JSeparator(), BorderLayout.CENTER);
+      fixHeight(line);
+      panel.add(line);
+    }
+
     private <T extends JComponent> T labelled(String label, T field) {
+      JLabel name = new JLabel(label);
+      name.setPreferredSize(new Dimension(LABEL_WIDTH, name.getPreferredSize().height));
+
       JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT));
-      row.add(new JLabel(label));
+      row.add(name);
       row.add(field);
+      fixHeight(row);
       panel.add(row);
 
       return field;
+    }
+
+    private void fixHeight(JPanel row) {
+      row.setMaximumSize(new Dimension(Integer.MAX_VALUE, row.getPreferredSize().height));
     }
   }
 }
