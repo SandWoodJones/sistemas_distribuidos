@@ -53,9 +53,10 @@ class FormatsTest {
 
   @Test
   void email() {
-    accepts(Formats.EMAIL, "joao.silva@email.com", "admin@utfpr.edu.br", "a@b.c");
-    rejects(Formats.EMAIL, "Joao@email.com", "joao@email", "joao silva@email.com", "@email.com", "joao@email.a.b.c",
-        "");
+    accepts(Formats.EMAIL, "joao.silva@email.com", "admin@utfpr.edu.br", "a@b.c",
+        "joao@alunos.utfpr.edu.br", "a@b.c.d.e.f");
+    rejects(Formats.EMAIL, "Joao@email.com", "joao@email", "joao silva@email.com", "@email.com",
+        "a@b.c.d.e.f.g", "");
   }
 
   @Test

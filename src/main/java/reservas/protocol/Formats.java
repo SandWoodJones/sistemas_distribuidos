@@ -14,7 +14,7 @@ public final class Formats {
   // Usuários
   public static final Pattern USER = Pattern.compile("^[a-z]{1,30}$");
   public static final Pattern PASSWORD = Pattern.compile("^[A-Za-z0-9]{1,20}$");
-  public static final Pattern EMAIL = Pattern.compile("^[a-z0-9.]+@[a-z0-9]+(\\.[a-z]+){1,2}$");
+  public static final Pattern EMAIL = Pattern.compile("^[a-z0-9.]+@[a-z0-9]+(\\.[a-z]+){1,4}$");
   public static final Pattern ROLE = Pattern.compile("^(user|admin)$");
 
   // IDs (`room_id`, `reservation_id`, `count`)
