@@ -142,9 +142,20 @@ class AccountHandlersTest {
 
   @Test
   void treatsEmptyAsNoChange() {
-    updateUser(UPDATE + ",'user':'','password':''}");
+    updateUser(UPDATE + ",'user':'','password':'novasenha1'}");
 
-    assertEquals(joao, store.findUserById(joao.id()).orElseThrow());
+    User stored = store.findUserById(joao.id()).orElseThrow();
+    assertEquals(joao.name(), stored.name());
+    assertEquals("novasenha1", stored.password());
+  }
+
+  @Test
+  void rejectsAnUpdateWithNothingToChange() {
+    for (String body : new String[] { UPDATE + ",'user':'','password':''}", UPDATE + "}" }) {
+      ProtocolException failure = updateUserFails(body);
+      assertEquals(Status.BAD_REQUEST, failure.status(), body);
+      assertEquals("Nenhum dado para atualizar", failure.wireMessage(), body);
+    }
   }
 
   @Test
@@ -212,15 +223,16 @@ class AccountHandlersTest {
     assertTrue(store.findSession(TOKEN).isEmpty());
   }
 
-  // Senha errada é 401, e o cadastro fica
+  // Senha errada é 403, o cadastro e a sessão ficam
   @Test
   void refusesTheWrongPasswordAndKeepsTheAccount() {
     ProtocolException failure = deleteUserFails(DELETE + ",'password':'errada'}");
 
-    assertEquals(Status.UNAUTHORIZED, failure.status());
-    assertEquals("Token invalido ou expirado", failure.wireMessage());
+    assertEquals(Status.FORBIDDEN, failure.status());
+    assertEquals("Senha incorreta", failure.wireMessage());
     assertTrue(failure.getMessage().contains("senha incorreta"), failure.getMessage());
     assertTrue(store.findUserById(joao.id()).isPresent());
+    assertTrue(store.findSession(TOKEN).isPresent());
   }
 
   @Test

@@ -18,6 +18,7 @@ public final class AccountHandlers {
   static final String READ_USER_BAD_REQUEST = "Token em formato invalido";
   static final String UPDATE_USER_BAD_REQUEST = "Dados em formato invalido";
   static final String DELETE_USER_BAD_REQUEST = "Senha em formato invalido";
+  static final String UPDATE_USER_NOTHING_TO_UPDATE = "Nenhum dado para atualizar";
 
   private static final DateTimeFormatter CREATED_AT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
@@ -48,6 +49,7 @@ public final class AccountHandlers {
     request.mustBeAbsent(Fields.EMAIL);
     String name = request.optional(Fields.USER, Formats.USER).orElse(null);
     String password = request.optional(Fields.PASSWORD, Formats.PASSWORD).orElse(null);
+    requireSomethingToUpdate(name, password);
 
     User updated = Caller.authenticate(request, context).user().with(name, password);
     if (context.store().updateUser(updated).isEmpty()) {
@@ -76,9 +78,17 @@ public final class AccountHandlers {
     return CREATED_AT.withZone(clock.getZone()).format(user.createdAt());
   }
 
+  // alterar exige mudar ao menos 1 campo
+  private static void requireSomethingToUpdate(String name, String password) {
+    if (name == null && password == null) {
+      throw ProtocolException.badRequest(UPDATE_USER_NOTHING_TO_UPDATE,
+          "'user' e 'password' vazios ou ausentes: nada para alterar");
+    }
+  }
+
   private static void confirmPassword(User user, String password) {
     if (!user.password().equals(password)) {
-      throw ProtocolException.unauthorized(Caller.UNAUTHORIZED, "senha incorreta para user \"" + user.name() + "\"");
+      throw ProtocolException.forbidden("Senha incorreta", "senha incorreta para user \"" + user.name() + "\"");
     }
   }
 

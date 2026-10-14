@@ -92,7 +92,7 @@ class SessionTest {
   void treatsEmptyUpdateFieldsAsNoChange() throws IOException {
     signUpAndIn();
 
-    assertStatus("200", session.updateUser("", ""));
+    assertStatus("400", session.updateUser("", ""));
     assertEquals("joao", session.readUser().get(Fields.USER).getAsString());
 
     assertStatus("200", session.updateUser("joaosilva", ""));
@@ -106,6 +106,15 @@ class SessionTest {
     assertStatus("200", session.logout());
     assertFalse(session.isLoggedIn());
     assertStatus("401", session.readUser());
+  }
+
+  @Test
+  void forgetsTheTokenWhenTheLogoutAnswers401() throws IOException {
+    String token = signUpAndIn().get(Fields.TOKEN).getAsString();
+    server.store().deleteSession(token);
+
+    assertStatus("401", session.logout());
+    assertFalse(session.isLoggedIn());
   }
 
   @Test

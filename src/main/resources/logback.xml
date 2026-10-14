@@ -2,7 +2,7 @@
 <configuration>
   <!-- `conn`, `peer` e `user` vem do MDC, setados uma vez quando a conexao abre -->
   <property name="PATTERN"
-            value="%d{HH:mm:ss.SSS} %-5level [%thread] %X{conn:-—} %X{peer:-—} %X{user:-—} %logger{0} - %msg%n"/>
+            value="%d{HH:mm:ss.SSS} %-5level [%thread] %X{conn:--} %X{peer:--} %X{user:--} %logger{0} - %msg%n"/>
 
   <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
     <encoder>

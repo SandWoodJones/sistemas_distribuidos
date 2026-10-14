@@ -53,7 +53,7 @@ public final class Session implements AutoCloseable {
 
   public JsonObject logout() throws IOException {
     JsonObject response = client.ask(authenticated(Op.LOGOUT));
-    if (succeeded(response)) {
+    if (succeeded(response) || tokenAlreadyDead(response)) {
       forget();
     }
 
@@ -109,6 +109,14 @@ public final class Session implements AutoCloseable {
   }
 
   private static boolean succeeded(JsonObject response) {
-    return Status.OK.code().equals(response.get(Fields.STATUS).getAsString());
+    return hasStatus(response, Status.OK);
+  }
+
+  private static boolean tokenAlreadyDead(JsonObject response) {
+    return hasStatus(response, Status.UNAUTHORIZED);
+  }
+
+  private static boolean hasStatus(JsonObject response, Status status) {
+    return status.code().equals(response.get(Fields.STATUS).getAsString());
   }
 }
