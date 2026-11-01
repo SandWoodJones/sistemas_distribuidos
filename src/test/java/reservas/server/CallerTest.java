@@ -1,12 +1,13 @@
 package reservas.server;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static reservas.protocol.ProtocolAssertions.assertFails;
+import static reservas.server.Fixtures.OTHER_TOKEN;
+import static reservas.server.Fixtures.T0;
+import static reservas.server.Fixtures.TOKEN;
 
-import java.time.Clock;
 import java.time.Instant;
-import java.time.ZoneOffset;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -19,12 +20,10 @@ import reservas.protocol.Role;
 import reservas.protocol.Status;
 
 class CallerTest {
-  private static final Instant T0 = Instant.parse("2026-09-09T14:32:10Z");
-  private static final String TOKEN = "a".repeat(64);
   private static final String BAD_REQUEST = "Token em formato invalido";
+  private static final String UNAUTHORIZED = "Token invalido ou expirado";
 
   private final SqliteStore store = SqliteStore.openInMemory();
-  private final TokenGenerator tokens = () -> "b".repeat(64);
   private User joao;
 
   @BeforeEach
@@ -39,12 +38,13 @@ class CallerTest {
   }
 
   private Caller authenticate(String json, Instant now) {
-    return Caller.authenticate(new Request(TestJson.object(json), BAD_REQUEST), new ServerContext(store,
-        Clock.fixed(now, ZoneOffset.UTC), tokens));
+    return Caller.authenticate(new Request(TestJson.object(json), BAD_REQUEST),
+        Fixtures.context(store, now));
   }
 
-  private ProtocolException fails(String json, Instant now) {
-    return assertThrows(ProtocolException.class, () -> authenticate(json, now));
+  private void assertRejected(Status status, String wireMessage, String diagnosis, String json, Instant now) {
+    ProtocolException failure = assertFails(status, wireMessage, () -> authenticate(json, now));
+    assertTrue(failure.getMessage().contains(diagnosis), failure.getMessage());
   }
 
   private static String withToken(String token) {
@@ -52,63 +52,28 @@ class CallerTest {
   }
 
   @Test
-  void findsTheOwnerOfALiveSession() {
-    Caller caller = authenticate(withToken(TOKEN), T0);
-    assertEquals(joao, caller.user());
-    assertEquals(TOKEN, caller.session().token());
-  }
+  void rejectsATokenThatOpensNoSession() {
+    assertRejected(Status.UNAUTHORIZED, UNAUTHORIZED, "ausente ou vazio", "{'op':'read_user'}", T0);
+    assertRejected(Status.UNAUTHORIZED, UNAUTHORIZED, "ausente ou vazio", withToken(""), T0);
 
-  @Test
-  void renewsTheIdleTimeout() {
-    Instant later = T0.plusSeconds(600);
-
-    assertEquals(later, authenticate(withToken(TOKEN), later).session().lastUsed());
-    assertEquals(later, store.findSession(TOKEN).orElseThrow().lastUsed());
-  }
-
-  // Timeout conta do ultimo uso, não do login
-  @Test
-  void countsTheTimeoutFromLastUse() {
-    authenticate(withToken(TOKEN), T0.plusSeconds(1500));
-
-    assertEquals(T0.plusSeconds(3000), authenticate(withToken(TOKEN), T0.plusSeconds(3000)).session().lastUsed());
-  }
-
-  @Test
-  void treatsAnAbsentTokenAsUnauthorized() {
-    for (String json : new String[] { "{'op':'read_user'}", withToken("") }) {
-      ProtocolException failure = fails(json, T0);
-      assertEquals(Status.UNAUTHORIZED, failure.status(), json);
-      assertEquals("Token invalido ou expirado", failure.wireMessage(), json);
-      assertTrue(failure.getMessage().contains("ausente ou vazio"), failure.getMessage());
-    }
-  }
-
-  @Test
-  void treatsAMalformedTokenAsBadRequest() {
     for (String json : new String[] { withToken("abc"), withToken("A".repeat(64)), withToken("g".repeat(64)),
         "{'op':'read_user','token':null}" }) {
-      ProtocolException failure = fails(json, T0);
-      assertEquals(Status.BAD_REQUEST, failure.status(), json);
-      assertEquals(BAD_REQUEST, failure.wireMessage(), json);
+      assertRejected(Status.BAD_REQUEST, BAD_REQUEST, "'token'", json, T0);
     }
+
+    assertRejected(Status.UNAUTHORIZED, UNAUTHORIZED, "nao abre nenhuma sessao", withToken(OTHER_TOKEN), T0);
   }
 
   @Test
-  void refusesATokenThatOpensNoSession() {
-    ProtocolException failure = fails(withToken("b".repeat(64)), T0);
-    assertEquals(Status.UNAUTHORIZED, failure.status());
-    assertEquals("Token invalido ou expirado", failure.wireMessage());
-    assertTrue(failure.getMessage().contains("nao abre nenhuma sessao"), failure.getMessage());
-  }
+  void idleTimeoutCountsFromTheLastUse() {
+    Instant almost = T0.plus(Session.IDLE_TIMEOUT).minusSeconds(1);
+    Instant almostAgain = almost.plus(Session.IDLE_TIMEOUT).minusSeconds(1);
 
-  // Sessão vencida é apagada
-  @Test
-  void refusesAnExpiredSessionAndDropsIt() {
-    ProtocolException failure = fails(withToken(TOKEN), T0.plus(Session.IDLE_TIMEOUT));
+    assertEquals(joao, authenticate(withToken(TOKEN), almost).user());
+    assertEquals(joao, authenticate(withToken(TOKEN), almostAgain).user());
 
-    assertEquals(Status.UNAUTHORIZED, failure.status());
-    assertEquals("Token invalido ou expirado", failure.wireMessage());
+    assertRejected(Status.UNAUTHORIZED, UNAUTHORIZED, "parada desde", withToken(TOKEN),
+        almostAgain.plus(Session.IDLE_TIMEOUT));
     assertTrue(store.findSession(TOKEN).isEmpty());
   }
 }

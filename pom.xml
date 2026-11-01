@@ -102,6 +102,7 @@
                   <mainClass>reservas.server.ServerApp</mainClass>
                   <manifestEntries>
                     <Multi-Release>true</Multi-Release>
+                    <Enable-Native-Access>ALL-UNNAMED</Enable-Native-Access>
                   </manifestEntries>
                 </transformer>
               </transformers>

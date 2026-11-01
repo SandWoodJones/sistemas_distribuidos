@@ -11,14 +11,12 @@ import reservas.protocol.Op;
 import reservas.protocol.ProtocolException;
 import reservas.protocol.Request;
 import reservas.protocol.Responses;
-import reservas.protocol.Role;
 import reservas.protocol.Status;
 
 public final class AccountHandlers {
   static final String READ_USER_BAD_REQUEST = "Token em formato invalido";
   static final String UPDATE_USER_BAD_REQUEST = "Dados em formato invalido";
   static final String DELETE_USER_BAD_REQUEST = "Senha em formato invalido";
-  static final String UPDATE_USER_NOTHING_TO_UPDATE = "Nenhum dado para atualizar";
 
   private static final DateTimeFormatter CREATED_AT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
@@ -37,10 +35,7 @@ public final class AccountHandlers {
     User user = Caller.authenticate(request, context).user();
 
     JsonObject response = Responses.of(Op.READ_USER, Status.OK, "Consulta realizada com sucesso");
-    response.addProperty(Fields.USER, user.name());
-    response.addProperty(Fields.EMAIL, user.email());
-    response.addProperty(Fields.ROLE, user.role().wireName());
-    response.addProperty(Fields.CREATED_AT, createdAt(user, context.clock()));
+    UserViews.addDetails(response, user, context.clock().getZone());
     return response;
   }
 
@@ -49,14 +44,10 @@ public final class AccountHandlers {
     request.mustBeAbsent(Fields.EMAIL);
     String name = request.optional(Fields.USER, Formats.USER).orElse(null);
     String password = request.optional(Fields.PASSWORD, Formats.PASSWORD).orElse(null);
-    requireSomethingToUpdate(name, password);
+    UserChanges changes = new UserChanges(name, password, null);
 
-    User updated = Caller.authenticate(request, context).user().with(name, password);
-    if (context.store().updateUser(updated).isEmpty()) {
-      throw ProtocolException.conflict("Usuario ja esta em uso",
-          "user \"" + updated.name() + "\" ja pertence a outro cadastro");
-    }
-
+    User user = Caller.authenticate(request, context).user();
+    context.store().updateUser(user.id(), changes).orThrow(user, changes);
     return Responses.of(Op.UPDATE_USER, Status.OK, "Dados atualizados com sucesso");
   }
 
@@ -64,13 +55,12 @@ public final class AccountHandlers {
     Request request = new Request(json, DELETE_USER_BAD_REQUEST);
     String password = request.required(Fields.PASSWORD, Formats.PASSWORD);
 
-    SqliteStore store = context.store();
-
     User user = Caller.authenticate(request, context).user();
     confirmPassword(user, password);
-    protectLastAdmin(store, user);
+    if (!context.store().deleteUserUnlessLastAdmin(user.id())) {
+      throw Admin.lastAdmin(user);
+    }
 
-    store.deleteUser(user.id());
     return Responses.of(Op.DELETE_USER, Status.OK, "Usuario removido com sucesso");
   }
 
@@ -78,24 +68,9 @@ public final class AccountHandlers {
     return CREATED_AT.withZone(clock.getZone()).format(user.createdAt());
   }
 
-  // alterar exige mudar ao menos 1 campo
-  private static void requireSomethingToUpdate(String name, String password) {
-    if (name == null && password == null) {
-      throw ProtocolException.badRequest(UPDATE_USER_NOTHING_TO_UPDATE,
-          "'user' e 'password' vazios ou ausentes: nada para alterar");
-    }
-  }
-
   private static void confirmPassword(User user, String password) {
     if (!user.password().equals(password)) {
       throw ProtocolException.forbidden("Senha incorreta", "senha incorreta para user \"" + user.name() + "\"");
-    }
-  }
-
-  private static void protectLastAdmin(SqliteStore store, User user) {
-    if (user.role() == Role.ADMIN && store.countAdmins() == 1) {
-      throw ProtocolException.forbidden("Nao e possivel remover o ultimo administrador",
-          "user \"" + user.name() + "\" e o unico admin");
     }
   }
 }

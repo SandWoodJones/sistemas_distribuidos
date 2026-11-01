@@ -7,8 +7,8 @@ import reservas.protocol.Role;
 
 public final class Bootstrap {
   public static final String ADMIN_USER = "admin";
-  public static final String ADMIN_EMAIL = "admin@utfpr.edu.br";
-  public static final String ADMIN_PASSWORD = "admin123";
+  public static final String ADMIN_EMAIL = "admin@admin.com";
+  public static final String ADMIN_PASSWORD = "admin";
 
   private Bootstrap() {
   }

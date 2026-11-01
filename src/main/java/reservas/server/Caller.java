@@ -31,6 +31,11 @@ public record Caller(User user, Session session) {
     return new Caller(owner(store, session), session.usedAt(now));
   }
 
+  // Whitelist de admin
+  Admin requireAdmin() {
+    return new Admin(user);
+  }
+
   private static User owner(SqliteStore store, Session session) {
     return store.findUserById(session.userId()).orElseThrow(() -> ProtocolException
         .internal("sessao " + session.token() + " aponta para usuario inexistente, id=" + session.userId()));

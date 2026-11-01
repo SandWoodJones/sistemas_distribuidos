@@ -2,45 +2,29 @@ package reservas.server;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static reservas.protocol.ProtocolAssertions.assertStatus;
+import static reservas.server.Fixtures.T0;
 
-import java.time.Instant;
-
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
-import reservas.protocol.Formats;
+import com.google.gson.JsonObject;
+
+import reservas.protocol.Fields;
 import reservas.protocol.Role;
+import reservas.protocol.TestJson;
 
 class BootstrapTest {
-  private static final Instant T0 = Instant.parse("2026-09-09T14:32:10Z");
-
-  private final SqliteStore store = SqliteStore.openInMemory();
-
-  @AfterEach
-  void closeStore() {
-    store.close();
-  }
-
-  // O admin semeado tem de conseguir fazer `login` pelo protocolo normal
   @Test
-  void seededCredentialsPassTheProtocolRegexes() {
-    assertTrue(Formats.matches(Formats.USER, Bootstrap.ADMIN_USER));
-    assertTrue(Formats.matches(Formats.EMAIL, Bootstrap.ADMIN_EMAIL));
-    assertTrue(Formats.matches(Formats.PASSWORD, Bootstrap.ADMIN_PASSWORD));
-  }
+  void seedsOneAdminThatLogsInThroughTheProtocol() {
+    SqliteStore store = SqliteStore.openInMemory();
 
-  @Test
-  void seedsOneAdmin() {
-    User admin = Bootstrap.seedAdmin(store, T0).orElseThrow();
-    assertEquals(Role.ADMIN, admin.role());
-    assertEquals(Bootstrap.ADMIN_EMAIL, admin.email());
-    assertEquals(1, store.countAdmins());
-  }
-
-  @Test
-  void seedingIsIdempotent() {
-    Bootstrap.seedAdmin(store, T0);
+    assertEquals(Role.ADMIN, Bootstrap.seedAdmin(store, T0).orElseThrow().role());
     assertTrue(Bootstrap.seedAdmin(store, T0).isEmpty());
     assertEquals(1, store.countAdmins());
+
+    JsonObject response = AuthHandlers.login(
+        TestJson.object("{'op':'login','email':'admin@admin.com','password':'admin'}"), Fixtures.context(store));
+    assertStatus("200", response);
+    assertEquals("admin", response.get(Fields.ROLE).getAsString());
   }
 }

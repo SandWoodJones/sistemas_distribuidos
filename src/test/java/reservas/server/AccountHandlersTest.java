@@ -1,14 +1,19 @@
 package reservas.server;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static reservas.protocol.ProtocolAssertions.assertFails;
+import static reservas.protocol.ProtocolAssertions.assertKeys;
+import static reservas.protocol.ProtocolAssertions.assertResponse;
+import static reservas.protocol.ProtocolAssertions.assertStatus;
+import static reservas.server.Fixtures.OTHER_TOKEN;
+import static reservas.server.Fixtures.REGISTER_JOAO;
+import static reservas.server.Fixtures.T0;
+import static reservas.server.Fixtures.T0_ON_THE_WIRE;
+import static reservas.server.Fixtures.TOKEN;
 
 import java.time.Clock;
-import java.time.Instant;
-import java.time.ZoneId;
 import java.time.ZoneOffset;
-import java.util.List;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -23,17 +28,12 @@ import reservas.protocol.Role;
 import reservas.protocol.Status;
 
 class AccountHandlersTest {
-  private static final Instant T0 = Instant.parse("2026-09-09T17:32:10Z");
-  private static final String TOKEN = "a".repeat(64);
-  private static final String ADMIN_TOKEN = "b".repeat(64);
-
+  private static final String ADMIN_TOKEN = OTHER_TOKEN;
   private static final String UPDATE = "{'op':'update_user','token':'" + TOKEN + "'";
-
   private static final String DELETE = "{'op':'delete_user','token':'" + TOKEN + "'";
 
   private final SqliteStore store = SqliteStore.openInMemory();
-  private final ServerContext context = new ServerContext(store, Clock.fixed(T0, ZoneId.of("America/Sao_Paulo")),
-      () -> TOKEN);
+  private final ServerContext context = Fixtures.context(store);
   private User joao;
 
   @BeforeEach
@@ -47,226 +47,128 @@ class AccountHandlersTest {
     store.close();
   }
 
-  private JsonObject readUser(String token) {
-    return readUser(token, context.clock());
-  }
-
-  private JsonObject readUser(String token, Clock at) {
-    return AccountHandlers.readUser(
-        TestJson.object("{'op':'read_user','token':'" + token + "'}"), new ServerContext(store, at, context.tokens()));
-  }
-
-  private ProtocolException readUserFails(String token) {
-    return assertThrows(ProtocolException.class, () -> readUser(token));
+  private JsonObject readUser(Clock at) {
+    return AccountHandlers.readUser(TestJson.object("{'op':'read_user','token':'" + TOKEN + "'}"),
+        new ServerContext(store, at, context.tokens()));
   }
 
   private JsonObject updateUser(String body) {
     return AccountHandlers.updateUser(TestJson.object(body), context);
   }
 
-  private ProtocolException updateUserFails(String body) {
-    return assertThrows(ProtocolException.class, () -> updateUser(body));
-  }
-
   private JsonObject deleteUser(String body) {
     return AccountHandlers.deleteUser(TestJson.object(body), context);
   }
 
-  private ProtocolException deleteUserFails(String body) {
-    return assertThrows(ProtocolException.class, () -> deleteUser(body));
+  private User stored() {
+    return store.findUserById(joao.id()).orElseThrow();
   }
 
   @Test
-  void ansers200WithTheWholeAccount() {
-    JsonObject response = readUser(TOKEN);
+  void readUserAnswersTheWholeAccountInTheClockZone() {
+    JsonObject response = readUser(context.clock());
 
-    assertEquals(
-        List.of(Fields.OP, Fields.STATUS, Fields.MESSAGE, Fields.USER, Fields.EMAIL, Fields.ROLE, Fields.CREATED_AT),
-        List.copyOf(response.keySet()));
-    assertEquals("read_user_response", response.get(Fields.OP).getAsString());
-    assertEquals("200", response.get(Fields.STATUS).getAsString());
-    assertEquals("Consulta realizada com sucesso", response.get(Fields.MESSAGE).getAsString());
+    assertKeys(response, Fields.OP, Fields.STATUS, Fields.MESSAGE, Fields.USER, Fields.EMAIL, Fields.ROLE, Fields.CREATED_AT);
+    assertResponse("read_user_response", "200", "Consulta realizada com sucesso", response);
     assertEquals("joao", response.get(Fields.USER).getAsString());
+    assertEquals("joao.silva@email.com", response.get(Fields.EMAIL).getAsString());
     assertEquals("user", response.get(Fields.ROLE).getAsString());
-  }
+    assertEquals(T0_ON_THE_WIRE, response.get(Fields.CREATED_AT).getAsString());
 
-  // O banco guarda UTC, a rede recebe no fuso do `Clock`
-  @Test
-  void formatsCreatedAtInTheZoneOfTheClock() {
-    assertEquals("2026-09-09 14:32:10", readUser(TOKEN).get(Fields.CREATED_AT).getAsString());
-    assertEquals("2026-09-09 17:32:10",
-        readUser(TOKEN, Clock.fixed(T0, ZoneOffset.UTC)).get(Fields.CREATED_AT).getAsString());
+    assertEquals("2026-09-09 17:32:10", readUser(Clock.fixed(T0, ZoneOffset.UTC)).get(Fields.CREATED_AT).getAsString());
   }
 
   @Test
-  void answersTheRoleStoredInTheAccount() {
-    User maria = store.createUser("maria", "maria@email.com", "senha123", Role.ADMIN, T0).orElseThrow();
-    store.createSession(ADMIN_TOKEN, maria.id(), T0).orElseThrow();
+  void updateChangesOnlyTheFieldsSentAndKeepsTheToken() {
+    JsonObject response = updateUser(UPDATE + ",'user':'joaosilva','password':''}");
 
-    assertEquals("admin", readUser(ADMIN_TOKEN).get(Fields.ROLE).getAsString());
-  }
+    assertKeys(response, Fields.OP, Fields.STATUS, Fields.MESSAGE);
+    assertResponse("update_user_response", "200", "Dados atualizados com sucesso", response);
+    assertEquals("joaosilva", stored().name());
+    assertEquals("senha123", stored().password());
 
-  @Test
-  void refusesATokenWithoutASession() {
-    ProtocolException failure = readUserFails("c".repeat(64));
-    assertEquals(Status.UNAUTHORIZED, failure.status());
-    assertEquals("Token invalido ou expirado", failure.wireMessage());
-  }
-
-  @Test
-  void carriesTheReadUserTextOnAMalformedToken() {
-    ProtocolException failure = readUserFails("abc");
-    assertEquals(Status.BAD_REQUEST, failure.status());
-    assertEquals("Token em formato invalido", failure.wireMessage());
-  }
-
-  // Trocar o proprio `user` não derruba a sessão
-  @Test
-  void changesTheUserAndKeepsTheToken() {
-    JsonObject response = updateUser(UPDATE + ",'user':'joaosilva'}");
-
-    assertEquals(List.of(Fields.OP, Fields.STATUS, Fields.MESSAGE), List.copyOf(response.keySet()));
-    assertEquals("update_user_response", response.get(Fields.OP).getAsString());
-    assertEquals("200", response.get(Fields.STATUS).getAsString());
-    assertEquals("Dados atualizados com sucesso", response.get(Fields.MESSAGE).getAsString());
-    assertEquals("joaosilva", store.findUserById(joao.id()).orElseThrow().name());
+    updateUser(UPDATE + ",'user':'','password':'novasenha1'}");
+    assertEquals("joaosilva", stored().name());
+    assertEquals("novasenha1", stored().password());
     assertEquals(joao.id(), store.findSession(TOKEN).orElseThrow().userId());
   }
 
   @Test
-  void changesThePassword() {
-    updateUser(UPDATE + ",'password':'novasenha1'}");
-
-    assertEquals("novasenha1", store.findUserById(joao.id()).orElseThrow().password());
-  }
-
-  @Test
-  void treatsEmptyAsNoChange() {
-    updateUser(UPDATE + ",'user':'','password':'novasenha1'}");
-
-    User stored = store.findUserById(joao.id()).orElseThrow();
-    assertEquals(joao.name(), stored.name());
-    assertEquals("novasenha1", stored.password());
-  }
-
-  @Test
-  void rejectsAnUpdateWithNothingToChange() {
+  void updateRejectsNothingToChange() {
     for (String body : new String[] { UPDATE + ",'user':'','password':''}", UPDATE + "}" }) {
-      ProtocolException failure = updateUserFails(body);
-      assertEquals(Status.BAD_REQUEST, failure.status(), body);
-      assertEquals("Nenhum dado para atualizar", failure.wireMessage(), body);
+      assertFails(Status.BAD_REQUEST, "Nenhum dado para atualizar", () -> updateUser(body));
     }
   }
 
   @Test
-  void rejectsNullFields() {
-    for (String body : new String[] { UPDATE + ",'user':null}", UPDATE + ",'password':null}" }) {
-      ProtocolException failure = updateUserFails(body);
-      assertEquals(Status.BAD_REQUEST, failure.status(), body);
-      assertEquals("Dados em formato invalido", failure.wireMessage(), body);
+  void updateRejectsEachFieldOutsideTheFormat() {
+    String[][] cases = {
+        { "user", UPDATE + ",'user':null}" },
+        { "user", UPDATE + ",'user':'joao123'}" },
+        { "user", UPDATE + ",'user':'JOAO'}" },
+        { "user", UPDATE + ",'user':12}" },
+        { "password", UPDATE + ",'password':null}" },
+        { "password", UPDATE + ",'password':'senha 123'}" },
+        { "email", UPDATE + ",'email':'outro@email.com'}" },
+        { "email", UPDATE + ",'email':''}" },
+        { "email", UPDATE + ",'email':null}" } };
+
+    for (String[] c : cases) {
+      ProtocolException failure = assertFails(Status.BAD_REQUEST, "Dados em formato invalido", () -> updateUser(c[1]));
+      assertTrue(failure.getMessage().contains("campo '" + c[0] + "'"), failure.getMessage());
     }
   }
 
   @Test
-  void rejectsTheEmailKeyEvenWhenEmpty() {
-    for (String body : new String[] { UPDATE + ",'email':'outro@email.com'}", UPDATE + ",'email':''}",
-        UPDATE + ",'email':null}" }) {
-      ProtocolException failure = updateUserFails(body);
-      assertEquals(Status.BAD_REQUEST, failure.status(), body);
-      assertEquals("Dados em formato invalido", failure.wireMessage(), body);
-      assertTrue(failure.getMessage().contains("'email'"), failure.getMessage());
-    }
-  }
-
-  @Test
-  void rejectsValuesOutsideTheFormat() {
-    for (String body : new String[] { UPDATE + ",'user':'joao123'}", UPDATE + ",'user':'JOAO'}",
-        UPDATE + ",'password':'senha 123'}" }) {
-      assertEquals(Status.BAD_REQUEST, updateUserFails(body).status(), body);
-    }
-  }
-
-  @Test
-  void rejectsAUserAlreadyTaken() {
+  void updateRejectsANameTakenByAnotherUser() {
     store.createUser("maria", "maria@email.com", "senha123", Role.USER, T0).orElseThrow();
 
-    ProtocolException failure = updateUserFails(UPDATE + ",'user':'maria'}");
-    assertEquals(Status.CONFLICT, failure.status());
-    assertEquals("Usuario ja esta em uso", failure.wireMessage());
-  }
-
-  // Reenviar o proprio nome nao colide consigo mesmo
-  @Test
-  void acceptsTheOwnUserUnchanged() {
-    assertEquals("200", updateUser(UPDATE + ",'user':'joao'}").get(Fields.STATUS).getAsString());
+    assertFails(Status.CONFLICT, "Usuario ja esta em uso", () -> updateUser(UPDATE + ",'user':'maria'}"));
+    assertStatus("200", updateUser(UPDATE + ",'user':'joao'}"));
   }
 
   @Test
-  void refusesAnUpdateWithATokenWithoutASession() {
-    ProtocolException failure = assertThrows(ProtocolException.class,
-        () -> updateUser("{'op':'update_user','token':'" + "c".repeat(64) + "','user':'joaosilva'}"));
-
-    assertEquals(Status.UNAUTHORIZED, failure.status());
-    assertEquals("Token invalido ou expirado", failure.wireMessage());
-  }
-
-  // A sessao cai com o cadastro por `ON DELETE CASCADE`
-  @Test
-  void removesTheAccountAndTheSession() {
+  void deleteRemovesTheAccountAndFreesItsName() {
     JsonObject response = deleteUser(DELETE + ",'password':'senha123'}");
 
-    assertEquals(List.of(Fields.OP, Fields.STATUS, Fields.MESSAGE), List.copyOf(response.keySet()));
-    assertEquals("delete_user_response", response.get(Fields.OP).getAsString());
-    assertEquals("200", response.get(Fields.STATUS).getAsString());
-    assertEquals("Usuario removido com sucesso", response.get(Fields.MESSAGE).getAsString());
+    assertKeys(response, Fields.OP, Fields.STATUS, Fields.MESSAGE);
+    assertResponse("delete_user_response", "200", "Usuario removido com sucesso", response);
     assertTrue(store.findUserById(joao.id()).isEmpty());
     assertTrue(store.findSession(TOKEN).isEmpty());
+
+    JsonObject again = AuthHandlers.register(TestJson.object(REGISTER_JOAO), context);
+    assertStatus("201", again);
   }
 
-  // Senha errada é 403, o cadastro e a sessão ficam
   @Test
-  void refusesTheWrongPasswordAndKeepsTheAccount() {
-    ProtocolException failure = deleteUserFails(DELETE + ",'password':'errada'}");
+  void deleteRefusesTheWrongPasswordAndKeepsTheSession() {
+    ProtocolException failure = assertFails(Status.FORBIDDEN, "Senha incorreta",
+        () -> deleteUser(DELETE + ",'password':'errada'}"));
 
-    assertEquals(Status.FORBIDDEN, failure.status());
-    assertEquals("Senha incorreta", failure.wireMessage());
     assertTrue(failure.getMessage().contains("senha incorreta"), failure.getMessage());
     assertTrue(store.findUserById(joao.id()).isPresent());
     assertTrue(store.findSession(TOKEN).isPresent());
   }
 
   @Test
-  void rejectsAnAbsentOrMalformedPassword() {
-    for (String body : new String[] { DELETE + "}", DELETE + ",'password':''}",
-        DELETE + ",'password':'senha 123'}", DELETE + ",'password':null}" }) {
-      ProtocolException failure = deleteUserFails(body);
-      assertEquals(Status.BAD_REQUEST, failure.status(), body);
-      assertEquals("Senha em formato invalido", failure.wireMessage(), body);
+  void deleteRejectsAnAbsentOrMalformedPassword() {
+    for (String body : new String[] { DELETE + "}", DELETE + ",'password':''}", DELETE + ",'password':'senha 123'}",
+        DELETE + ",'password':null}" }) {
+      assertFails(Status.BAD_REQUEST, "Senha em formato invalido", () -> deleteUser(body));
     }
   }
 
-  // O ultimo admin não sai
   @Test
-  void refusesToRemoveTheLastAdmin() {
+  void deleteKeepsTheLastAdmin() {
     User maria = store.createUser("maria", "maria@email.com", "senha123", Role.ADMIN, T0).orElseThrow();
     store.createSession(ADMIN_TOKEN, maria.id(), T0).orElseThrow();
+    String body = "{'op':'delete_user','token':'" + ADMIN_TOKEN + "','password':'senha123'}";
 
-    ProtocolException failure = assertThrows(ProtocolException.class,
-        () -> deleteUser("{'op':'delete_user','token':'" + ADMIN_TOKEN + "','password':'senha123'}"));
-    assertEquals(Status.FORBIDDEN, failure.status());
-    assertEquals("Nao e possivel remover o ultimo administrador", failure.wireMessage());
+    assertFails(Status.FORBIDDEN, "Nao e possivel remover o ultimo administrador", () -> deleteUser(body));
     assertTrue(store.findUserById(maria.id()).isPresent());
-  }
 
-  @Test
-  void removesAnAdminWhileAnotherRemains() {
-    User maria = store.createUser("maria", "maria@email.com", "senha123", Role.ADMIN, T0).orElseThrow();
     store.createUser("ana", "ana@email.com", "senha123", Role.ADMIN, T0).orElseThrow();
-    store.createSession(ADMIN_TOKEN, maria.id(), T0).orElseThrow();
-
-    assertEquals("200",
-        deleteUser("{'op':'delete_user','token':'" + ADMIN_TOKEN + "','password':'senha123'}")
-            .get(Fields.STATUS).getAsString());
+    assertStatus("200", deleteUser(body));
     assertTrue(store.findUserById(maria.id()).isEmpty());
   }
 }

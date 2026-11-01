@@ -6,7 +6,9 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Optional;
 
 import reservas.protocol.Codec;
@@ -43,6 +45,19 @@ final class Database implements AutoCloseable {
   synchronized <T> Optional<T> queryOne(String sql, RowMapper<T> mapper, Object... values) {
     try (PreparedStatement statement = prepare(sql, values); ResultSet rows = statement.executeQuery()) {
       return rows.next() ? Optional.of(mapper.map(rows)) : Optional.empty();
+    } catch (SQLException e) {
+      throw failure(sql, values, e);
+    }
+  }
+
+  synchronized <T> List<T> queryList(String sql, RowMapper<T> mapper, Object... values) {
+    try (PreparedStatement statement = prepare(sql, values); ResultSet rows = statement.executeQuery()) {
+      List<T> found = new ArrayList<>();
+      while (rows.next()) {
+        found.add(mapper.map(rows));
+      }
+
+      return found;
     } catch (SQLException e) {
       throw failure(sql, values, e);
     }

@@ -3,6 +3,7 @@ package reservas.protocol;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static reservas.protocol.ProtocolAssertions.assertFails;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -19,67 +20,33 @@ class LineReaderTest {
   }
 
   @Test
-  void readsOneLineWithItsTerminator() throws IOException {
-    assertEquals(Optional.of(LOGIN + "\n"), reader(LOGIN + "\n").readLine());
-  }
+  void limitIs8192BytesIncludingTheNewline() throws IOException {
+    String atLimit = "a".repeat(Codec.MAX_MESSAGE_BYTES - 1) + "\n";
+    assertEquals(Optional.of(atLimit), reader(atLimit).readLine());
 
-  @Test
-  void readsSeveralLinesInSequence() throws IOException {
-    LineReader lines = reader(LOGIN + "\n{\"op\":\"logout\"}\n");
-
-    assertEquals(Optional.of(LOGIN + "\n"), lines.readLine());
-    assertEquals(Optional.of("{\"op\":\"logout\"}\n"), lines.readLine());
-    assertEquals(Optional.empty(), lines.readLine());
-  }
-
-  @Test
-  void answersEmptyWhenTheClientCloses() throws IOException {
-    assertEquals(Optional.empty(), reader("").readLine());
-  }
-
-  @Test
-  void returnsATrailingLineWithoutTerminator() throws IOException {
-    assertEquals(Optional.of(LOGIN), reader(LOGIN).readLine());
-  }
-
-  @Test
-  void acceptsALineExactlyAtTheLimit() throws IOException {
-    String line = "a".repeat(Codec.MAX_MESSAGE_BYTES - 1) + "\n";
-
-    assertEquals(Codec.MAX_MESSAGE_BYTES, Codec.sizeInBytes(line));
-    assertEquals(Optional.of(line), reader(line).readLine());
-  }
-
-  @Test
-  void rejectsALineOneByteOverTheLimit() {
-    ProtocolException failure = assertThrows(ProtocolException.class,
+    assertFails(Status.BAD_REQUEST, "Mensagem excede o tamanho maximo",
         () -> reader("a".repeat(Codec.MAX_MESSAGE_BYTES) + "\n").readLine());
 
-    assertEquals(Status.BAD_REQUEST, failure.status());
-    assertEquals("Mensagem excede o tamanho maximo", failure.wireMessage());
-  }
-
-  @Test
-  void countsBytesAndNotCharacters() throws IOException {
     assertEquals(Optional.of("é".repeat(4095) + "\n"), reader("é".repeat(4095) + "\n").readLine());
     assertThrows(ProtocolException.class, () -> reader("é".repeat(4096) + "\n").readLine());
   }
 
-  // O resto de uma linha grande não vira a mensagem seguinte
   @Test
   void resyncsOnTheNextLineAfterAnOversizedOne() throws IOException {
-    LineReader lines = reader("a".repeat(9000) + "\n" + LOGIN + "\n");
+    String oversized = "{\"op\":\"login\",\"password\":\"" + "x".repeat(9000) + "\"}";
+    LineReader lines = reader(oversized + "\n" + LOGIN + "\n");
 
     ProtocolException failure = assertThrows(ProtocolException.class, lines::readLine);
     assertTrue(failure.getMessage().contains("descartados"), failure.getMessage());
+    assertTrue(failure.getMessage().contains("bruto={\"op\":\"login\""), failure.getMessage());
     assertEquals(Optional.of(LOGIN + "\n"), lines.readLine());
   }
 
   @Test
-  void diagnosisQuotesTheStartOfTheLine() {
-    ProtocolException failure = assertThrows(ProtocolException.class,
-        () -> reader("{\"op\":\"login\",\"password\":\"" + "x".repeat(9000) + "\"}\n").readLine());
+  void returnsATrailingLineWithoutTerminatorThenEmpty() throws IOException {
+    LineReader lines = reader(LOGIN);
 
-    assertTrue(failure.getMessage().contains("bruto={\"op\":\"login\""), failure.getMessage());
+    assertEquals(Optional.of(LOGIN), lines.readLine());
+    assertEquals(Optional.empty(), lines.readLine());
   }
 }

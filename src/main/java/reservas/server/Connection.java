@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.io.OutputStreamWriter;
 import java.io.Writer;
 import java.net.Socket;
+import java.net.SocketException;
 import java.net.SocketTimeoutException;
 import java.nio.charset.StandardCharsets;
 import java.util.Optional;
@@ -50,6 +51,9 @@ final class Connection implements Runnable {
       serve(open);
     } catch (SocketTimeoutException e) {
       log.info("conexao fechada por {} ms sem trafego, o token continua valido", IDLE_TIMEOUT_MILLIS);
+    } catch (SocketException e) {
+      // Cliente fechou sem encerrar a conexão
+      log.info("cliente encerrou a conexao: {}", e.getMessage());
     } catch (IOException e) {
       log.warn("conexao encerrada por falha de socket: {}", e.getMessage(), e);
     } finally {
@@ -109,7 +113,7 @@ final class Connection implements Runnable {
   }
 
   private static JsonObject report(ProtocolException failure) {
-    log.warn(failure.getMessage(), failure);
+    Diagnostics.report(log, failure);
     return Responses.error(failure);
   }
 }

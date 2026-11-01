@@ -3,6 +3,7 @@ package reservas.server;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 
 import reservas.protocol.Codec;
@@ -42,6 +43,10 @@ public final class SqliteStore implements AutoCloseable {
     return database.queryOne("SELECT * FROM users WHERE id = ?", SqliteStore::toUser, id);
   }
 
+  public List<User> listUsers() {
+    return database.queryList("SELECT * FROM users ORDER BY name", SqliteStore::toUser);
+  }
+
   // Vazio se `name` ou `email` já estão cadastrados
   public synchronized Optional<User> createUser(String name, String email, String password, Role role,
       Instant createdAt) {
@@ -55,24 +60,52 @@ public final class SqliteStore implements AutoCloseable {
   }
 
   // Vazio se o novo `name` já pertence a outro usuário
-  public synchronized Optional<User> updateUser(User user) {
+  public synchronized UpdateOutcome updateUser(long id, UserChanges changes) {
+    User current = findUserById(id)
+        .orElseThrow(() -> new IllegalStateException("atualizacao de usuario inexistente, id=" + id));
+    User updated = current.with(changes);
+
+    if (demotesLastAdmin(current, updated)) {
+      return UpdateOutcome.LAST_ADMIN;
+    }
+    if (nameTakenByAnother(updated)) {
+      return UpdateOutcome.NAME_TAKEN;
+    }
+
+    database.update("UPDATE users SET name = ?, password = ?, role = ? WHERE id = ?", updated.name(),
+        updated.password(),
+        updated.role().wireName(), id);
+
+    return UpdateOutcome.UPDATED;
+  }
+
+  private boolean demotesLastAdmin(User current, User updated) {
+    return current.role() == Role.ADMIN && updated.role() != Role.ADMIN && countAdmins() == 1;
+  }
+
+  private boolean nameTakenByAnother(User user) {
     Optional<User> sameName = findUser(user.name());
-    if (sameName.isPresent() && sameName.get().id() != user.id()) {
-      return Optional.empty();
-    }
-
-    int changed = database.update("UPDATE users SET name = ?, password = ? WHERE id = ?", user.name(), user.password(),
-        user.id());
-    if (changed == 0) {
-      throw new IllegalStateException("atualizacao de usuario inexistente, id=" + user.id());
-    }
-
-    return Optional.of(user);
+    return sameName.isPresent() && sameName.get().id() != user.id();
   }
 
   // A sessão cai junto por `ON DELETE CASCADE`
   public void deleteUser(long id) {
     database.update("DELETE FROM users WHERE id = ?", id);
+  }
+
+  // `false` se `id` é o único admin
+  public synchronized boolean deleteUserUnlessLastAdmin(long id) {
+    if (isLastAdmin(id)) {
+      return false;
+    }
+
+    deleteUser(id);
+    return true;
+  }
+
+  private boolean isLastAdmin(long id) {
+    boolean admin = findUserById(id).map(user -> user.role() == Role.ADMIN).orElse(false);
+    return admin && countAdmins() == 1;
   }
 
   public int countAdmins() {

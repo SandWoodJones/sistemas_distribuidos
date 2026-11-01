@@ -1,6 +1,7 @@
 package reservas.client;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
+import static reservas.protocol.ProtocolAssertions.assertStatus;
+import static reservas.server.Fixtures.TOKEN;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.BufferedReader;
@@ -35,8 +36,8 @@ class ProtocolClientReconnectTest {
 
       List<String> traffic = new ArrayList<>();
       try (ProtocolClient client = TestClients.connect(listening.getLocalPort(), traffic::add)) {
-        assertEquals("200", status(client.ask(readUser())));
-        assertEquals("200", status(client.ask(readUser())));
+        assertStatus("200", client.ask(readUser()));
+        assertStatus("200", client.ask(readUser()));
       }
 
       assertTrue(traffic.stream().anyMatch(line -> line.contains("reconectando")), traffic.toString());
@@ -62,11 +63,7 @@ class ProtocolClientReconnectTest {
   private static JsonObject readUser() {
     JsonObject request = new JsonObject();
     request.addProperty(Fields.OP, "read_user");
-    request.addProperty(Fields.TOKEN, "a".repeat(64));
+    request.addProperty(Fields.TOKEN, TOKEN);
     return request;
-  }
-
-  private static String status(JsonObject response) {
-    return response.get(Fields.STATUS).getAsString();
   }
 }

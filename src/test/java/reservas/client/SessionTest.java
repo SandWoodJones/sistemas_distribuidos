@@ -3,6 +3,8 @@ package reservas.client;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static reservas.protocol.ProtocolAssertions.assertStatus;
+import static reservas.server.Fixtures.T0_ON_THE_WIRE;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -39,78 +41,48 @@ class SessionTest {
     server.close();
   }
 
-  private static void assertStatus(String status, JsonObject response) {
-    assertEquals(status, response.get(Fields.STATUS).getAsString(), response.toString());
-  }
-
-  private JsonObject signUpAndIn() throws IOException {
-    assertStatus("201", session.register(EMAIL, "joao", "senha123"));
-    return session.login(EMAIL, "senha123");
-  }
-
   @Test
-  void keepsTheTokenAndRoleAfterLogin() throws IOException {
-    assertFalse(session.isLoggedIn());
+  void keepsTheTokenAndRoleOnlyAfterAnAcceptedLogin() throws IOException {
+    JsonObject anonymous = session.readUser();
+    assertStatus("401", anonymous);
+    assertEquals("Token invalido ou expirado", anonymous.get(Fields.MESSAGE).getAsString());
 
-    assertStatus("200", signUpAndIn());
+    assertStatus("201", session.register(EMAIL, "joao", "senha123"));
+    assertStatus("401", session.login(EMAIL, "errada"));
+    assertFalse(session.isLoggedIn());
+    assertTrue(session.role().isEmpty());
+
+    assertStatus("200", session.login(EMAIL, "senha123"));
     assertTrue(session.isLoggedIn());
     assertEquals("user", session.role().orElseThrow());
   }
 
-  // Login recusado não abre sessão
-  @Test
-  void staysLoggedOutWhenLoginFails() throws IOException {
-    assertStatus("201", session.register(EMAIL, "joao", "senha123"));
-
-    assertStatus("401", session.login(EMAIL, "errada"));
-    assertFalse(session.isLoggedIn());
-    assertTrue(session.role().isEmpty());
-  }
-
   // Sem token o servidor responde 401
   @Test
-  void sendsAnEmptyTokenBeforeLogin() throws IOException {
-    JsonObject response = session.readUser();
+  void sendsTheAccountOpsWithTheSessionToken() throws IOException {
+    session.register(EMAIL, "joao", "senha123");
+    session.login(EMAIL, "senha123");
 
-    assertStatus("401", response);
-    assertEquals("Token invalido ou expirado", response.get(Fields.MESSAGE).getAsString());
-  }
-
-  @Test
-  void readsTheWholeAccount() throws IOException {
-    signUpAndIn();
-
-    JsonObject response = session.readUser();
-    assertStatus("200", response);
-    assertEquals("joao", response.get(Fields.USER).getAsString());
-    assertEquals(EMAIL, response.get(Fields.EMAIL).getAsString());
-    assertEquals("user", response.get(Fields.ROLE).getAsString());
-    assertEquals("2026-09-09 14:32:10", response.get(Fields.CREATED_AT).getAsString());
-  }
-
-  @Test
-  void treatsEmptyUpdateFieldsAsNoChange() throws IOException {
-    signUpAndIn();
+    JsonObject account = session.readUser();
+    assertStatus("200", account);
+    assertEquals("joao", account.get(Fields.USER).getAsString());
+    assertEquals(EMAIL, account.get(Fields.EMAIL).getAsString());
+    assertEquals(T0_ON_THE_WIRE, account.get(Fields.CREATED_AT).getAsString());
 
     assertStatus("400", session.updateUser("", ""));
-    assertEquals("joao", session.readUser().get(Fields.USER).getAsString());
-
     assertStatus("200", session.updateUser("joaosilva", ""));
     assertEquals("joaosilva", session.readUser().get(Fields.USER).getAsString());
   }
 
   @Test
-  void forgetsTheTokenOnLogout() throws IOException {
-    signUpAndIn();
+  void forgetsTheTokenWhenLogoutAnswers200Or401() throws IOException {
+    session.register(EMAIL, "joao", "senha123");
+    session.login(EMAIL, "senha123");
 
     assertStatus("200", session.logout());
     assertFalse(session.isLoggedIn());
-    assertStatus("401", session.readUser());
-  }
 
-  @Test
-  void forgetsTheTokenWhenTheLogoutAnswers401() throws IOException {
-    String token = signUpAndIn().get(Fields.TOKEN).getAsString();
+    String token = session.login(EMAIL, "senha123").get(Fields.TOKEN).getAsString();
     server.store().deleteSession(token);
 
     assertStatus("401", session.logout());
@@ -119,7 +91,8 @@ class SessionTest {
 
   @Test
   void forgetsTheTokenAfterDeletingTheAccount() throws IOException {
-    signUpAndIn();
+    session.register(EMAIL, "joao", "senha123");
+    session.login(EMAIL, "senha123");
 
     assertStatus("200", session.deleteUser("senha123"));
     assertFalse(session.isLoggedIn());

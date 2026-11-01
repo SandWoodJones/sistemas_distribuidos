@@ -12,16 +12,16 @@ public enum Op implements WireValue {
   UPDATE_USER("update_user"),
   DELETE_USER("delete_user"),
 
-  ADMIN_LIST_USERS("admin_list_users", true),
-  ADMIN_READ_USER("admin_read_user", true),
-  ADMIN_UPDATE_USER("admin_update_user", true),
-  ADMIN_DELETE_USER("admin_delete_user", true),
+  ADMIN_LIST_USERS("admin_list_users"),
+  ADMIN_READ_USER("admin_read_user"),
+  ADMIN_UPDATE_USER("admin_update_user"),
+  ADMIN_DELETE_USER("admin_delete_user"),
 
-  CREATE_ROOM("create_room", true),
+  CREATE_ROOM("create_room"),
   LIST_ROOMS("list_rooms"),
   READ_ROOM("read_room"),
-  UPDATE_ROOM("update_room", true),
-  DELETE_ROOM("delete_room", true),
+  UPDATE_ROOM("update_room"),
+  DELETE_ROOM("delete_room"),
 
   CHECK_AVAILABILITY("check_availability"),
   CREATE_RESERVATION("create_reservation"),
@@ -33,15 +33,9 @@ public enum Op implements WireValue {
   public static final String ERROR_OP = "error";
   private static final String RESPONSE_SUFFIX = "_response";
   private final String wireName;
-  private final boolean needsAdmin;
-
-  Op(String wireName, boolean admin) {
-    this.wireName = wireName;
-    this.needsAdmin = admin;
-  }
 
   Op(String wireName) {
-    this(wireName, false);
+    this.wireName = wireName;
   }
 
   @Override
@@ -51,15 +45,6 @@ public enum Op implements WireValue {
 
   public String responseName() {
     return wireName + RESPONSE_SUFFIX;
-  }
-
-  // Toda requisição envia token, exceto essas duas
-  public boolean requiresToken() {
-    return this != REGISTER && this != LOGIN;
-  }
-
-  public boolean requiresAdmin() {
-    return needsAdmin;
   }
 
   public static Optional<Op> fromWire(String wireName) {

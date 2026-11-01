@@ -27,8 +27,9 @@ public final class Codec {
     String line = message + "\n";
 
     if (sizeInBytes(line) > MAX_MESSAGE_BYTES) {
-      throw ProtocolException.internal("resposta gerada com " + sizeInBytes(line) + " bytes, limite " + MAX_MESSAGE_BYTES
-          + "; inicio=" + snippet(line));
+      throw ProtocolException
+          .internal("resposta gerada com " + sizeInBytes(line) + " bytes, limite " + MAX_MESSAGE_BYTES
+              + "; inicio=" + snippet(line));
     }
 
     return line;
@@ -37,11 +38,6 @@ public final class Codec {
   // Interpreta uma linha recebida. O `\n` final pode estar presente ou já ter
   // sido removido
   public static JsonObject decode(String line) {
-    if (sizeInBytes(line) > MAX_MESSAGE_BYTES) {
-      throw ProtocolException.badRequest(Messages.MESSAGE_TOO_LARGE,
-          diagnosis("recebidos " + sizeInBytes(line) + " bytes, limite " + MAX_MESSAGE_BYTES, line));
-    }
-
     try (JsonReader reader = new JsonReader(new StringReader(line))) {
       // Modo estrito recusa chaves sem aspas e aspas simples, assim os testes pegam
       // erros do serializador em vez de aceitar em silêncio
@@ -53,7 +49,8 @@ public final class Codec {
             diagnosis("esperado objeto JSON, veio " + typeOf(parsed), line));
       }
       if (reader.peek() != JsonToken.END_DOCUMENT) {
-        throw ProtocolException.badRequest(Messages.INVALID_REQUEST, diagnosis("conteudo extra depois do objeto", line));
+        throw ProtocolException.badRequest(Messages.INVALID_REQUEST,
+            diagnosis("conteudo extra depois do objeto", line));
       }
 
       return parsed.getAsJsonObject();

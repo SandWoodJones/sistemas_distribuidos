@@ -2,6 +2,10 @@ package reservas.server;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static reservas.protocol.ProtocolAssertions.assertResponse;
+import static reservas.protocol.ProtocolAssertions.assertStatus;
+import static reservas.server.Fixtures.LOGIN_JOAO;
+import static reservas.server.Fixtures.REGISTER_JOAO;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -40,69 +44,35 @@ class ServerSocketLoopTest {
     return new Client(server.port());
   }
 
-  private static String register(String user, String email) {
-    return "{'op':'register','email':'" + email + "','user':'" + user + "','password':'senha123'}";
-  }
-
-  private static void assertStatus(String status, JsonObject response) {
-    assertEquals(status, response.get(Fields.STATUS).getAsString(), response.toString());
-  }
-
-  // A conexão fica aberta entre requisições
   @Test
-  void answersEveryRequestOnTheSameConnection() throws IOException {
-    try (Client client = connect()) {
-      assertStatus("201", client.ask(register("joao", "joao.silva@email.com")));
-
-      JsonObject login = client.ask("{'op':'login','email':'joao.silva@email.com','password':'senha123'}");
-      assertStatus("200", login);
-      String token = login.get(Fields.TOKEN).getAsString();
-
-      assertStatus("200", client.ask("{'op':'read_user','token':'" + token + "'}"));
-      assertStatus("200", client.ask("{'op':'logout','token':'" + token + "'}"));
-    }
-  }
-
-  // O resto da linha grande nao vira a mensagem seguinte
-  @Test
-  void answersAnOversizedLineAndKeepsGoing() throws IOException {
-    try (Client client = connect()) {
-      JsonObject rejected = client.ask("{'op':'login','password':'" + "x".repeat(9000) + "'}");
-      assertEquals("error", rejected.get(Fields.OP).getAsString());
-      assertStatus("400", rejected);
-      assertEquals("Mensagem excede o tamanho maximo", rejected.get(Fields.MESSAGE).getAsString());
-
-      assertStatus("201", client.ask(register("joao", "joao.silva@email.com")));
-    }
-  }
-
-  @Test
-  void answersMalformedJsonWithoutClosing() throws IOException {
-    try (Client client = connect()) {
-      JsonObject rejected = client.ask("{'op':'login',");
-      assertEquals("error", rejected.get(Fields.OP).getAsString());
-      assertStatus("400", rejected);
-      assertEquals("Requisicao invalida", rejected.get(Fields.MESSAGE).getAsString());
-
-      assertStatus("201", client.ask(register("joao", "joao.silva@email.com")));
-    }
-  }
-
-  // Uma thread por conexao, as duas atendidas ao mesmo tempo
-  @Test
-  void servesTwoClientsAtOnce() throws IOException {
+  void servesTwoClientsAtOnceEachOnItsOwnConnection() throws IOException {
     try (Client first = connect(); Client second = connect()) {
-      assertStatus("201", first.ask(register("joao", "joao.silva@email.com")));
-      assertStatus("201", second.ask(register("maria", "maria@email.com")));
+      assertStatus("201", first.ask(REGISTER_JOAO));
+      assertStatus("201", second.ask(
+          "{'op':'register','email':'maria@email.com','user':'maria','password':'senha123'}"));
 
-      String one = first.ask("{'op':'login','email':'joao.silva@email.com','password':'senha123'}")
-          .get(Fields.TOKEN).getAsString();
+      String one = first.ask(LOGIN_JOAO).get(Fields.TOKEN).getAsString();
       String two = second.ask("{'op':'login','email':'maria@email.com','password':'senha123'}")
           .get(Fields.TOKEN).getAsString();
-
       assertNotEquals(one, two);
-      assertStatus("200", first.ask("{'op':'read_user','token':'" + one + "'}"));
-      assertStatus("200", second.ask("{'op':'read_user','token':'" + two + "'}"));
+
+      assertEquals("joao", first.ask("{'op':'read_user','token':'" + one + "'}").get(Fields.USER).getAsString());
+      assertEquals("maria", second.ask("{'op':'read_user','token':'" + two + "'}").get(Fields.USER).getAsString());
+      assertStatus("200", first.ask("{'op':'logout','token':'" + one + "'}"));
+      assertStatus("200", second.ask("{'op':'logout','token':'" + two + "'}"));
+    }
+  }
+
+  @Test
+  void answersBadLinesAndKeepsTheConnection() throws IOException {
+    try (Client client = connect()) {
+      JsonObject oversized = client.ask("{'op':'login','password':'}" + "x".repeat(9000) + "'}");
+      assertResponse("error", "400", "Mensagem excede o tamanho maximo", oversized);
+
+      JsonObject malformed = client.ask("{'op':'login',");
+      assertResponse("error", "400", "Requisicao invalida", malformed);
+
+      assertStatus("201", client.ask(REGISTER_JOAO));
     }
   }
 

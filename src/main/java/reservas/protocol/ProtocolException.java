@@ -27,6 +27,10 @@ public final class ProtocolException extends RuntimeException {
     return new ProtocolException(Status.FORBIDDEN, wireMessage, detail, null);
   }
 
+  public static ProtocolException notFound(String wireMessage, String detail) {
+    return new ProtocolException(Status.NOT_FOUND, wireMessage, detail, null);
+  }
+
   public static ProtocolException conflict(String wireMessage, String detail) {
     return new ProtocolException(Status.CONFLICT, wireMessage, detail, null);
   }

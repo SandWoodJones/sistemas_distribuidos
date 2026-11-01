@@ -3,9 +3,6 @@ package reservas.server;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import java.time.Clock;
-import java.time.Instant;
-import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -22,11 +19,10 @@ import reservas.protocol.Status;
 
 @Timeout(20)
 class StoreConcurrencyTest {
-  private static final Instant T0 = Instant.parse("2026-09-09T17:32:10Z");
   private static final int THREADS = 20;
 
   private final SqliteStore store = SqliteStore.openInMemory();
-  private final ServerContext context = new ServerContext(store, Clock.fixed(T0, ZoneOffset.UTC), () -> "a".repeat(64));
+  private final ServerContext context = Fixtures.context(store);
   private final List<Throwable> failures = Collections.synchronizedList(new ArrayList<>());
 
   @AfterEach
