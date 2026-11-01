@@ -23,6 +23,16 @@ final class Schema {
         user_id   INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
         last_used TEXT NOT NULL
       )
+      """,
+      """
+      CREATE TABLE IF NOT EXISTS rooms (
+        id        INTEGER PRIMARY KEY AUTOINCREMENT,
+        name      TEXT NOT NULL UNIQUE,
+        capacity  INTEGER NOT NULL,
+        location  TEXT NOT NULL,
+        resources TEXT NOT NULL,
+        status    TEXT NOT NULL
+      )
       """
   };
 }

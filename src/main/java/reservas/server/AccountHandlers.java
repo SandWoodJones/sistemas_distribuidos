@@ -34,9 +34,7 @@ public final class AccountHandlers {
 
     User user = Caller.authenticate(request, context).user();
 
-    JsonObject response = Responses.of(Op.READ_USER, Status.OK, "Consulta realizada com sucesso");
-    UserViews.addDetails(response, user, context.clock().getZone());
-    return response;
+    return Responses.found(Op.READ_USER, UserViews.details(user, context.clock().getZone()));
   }
 
   static JsonObject updateUser(JsonObject json, ServerContext context) {

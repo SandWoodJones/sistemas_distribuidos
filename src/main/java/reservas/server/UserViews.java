@@ -25,8 +25,9 @@ final class UserViews {
     return view;
   }
 
-  static void addDetails(JsonObject response, User user, ZoneId zone) {
-    summary(user).entrySet().forEach(field -> response.add(field.getKey(), field.getValue()));
-    response.addProperty(Fields.CREATED_AT, CREATED_AT.withZone(zone).format(user.createdAt()));
+  static JsonObject details(User user, ZoneId zone) {
+    JsonObject view = summary(user);
+    view.addProperty(Fields.CREATED_AT, CREATED_AT.withZone(zone).format(user.createdAt()));
+    return view;
   }
 }

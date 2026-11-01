@@ -2,7 +2,6 @@ package reservas.server;
 
 import java.util.List;
 
-import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 
 import reservas.protocol.Fields;
@@ -35,10 +34,7 @@ public final class AdminHandlers {
     Caller.authenticate(request, context).requireAdmin();
     List<User> users = context.store().listUsers();
 
-    JsonObject response = Responses.of(Op.ADMIN_LIST_USERS, Status.OK, "Consulta realizada com sucesso");
-    response.addProperty(Fields.COUNT, Integer.toString(users.size()));
-    response.add(Fields.USERS, summaries(users));
-    return response;
+    return Responses.listing(Op.ADMIN_LIST_USERS, Fields.USERS, users.stream().map(UserViews::summary).toList());
   }
 
   static JsonObject readUser(JsonObject json, ServerContext context) {
@@ -48,9 +44,7 @@ public final class AdminHandlers {
     Caller.authenticate(request, context).requireAdmin();
     User user = findTarget(context.store(), target);
 
-    JsonObject response = Responses.of(Op.ADMIN_READ_USER, Status.OK, "Consulta realizada com sucesso");
-    UserViews.addDetails(response, user, context.clock().getZone());
-    return response;
+    return Responses.found(Op.ADMIN_READ_USER, UserViews.details(user, context.clock().getZone()));
   }
 
   static JsonObject updateUser(JsonObject json, ServerContext context) {
@@ -80,12 +74,6 @@ public final class AdminHandlers {
     }
 
     return Responses.of(Op.ADMIN_DELETE_USER, Status.OK, "Usuario removido com sucesso");
-  }
-
-  private static JsonArray summaries(List<User> users) {
-    JsonArray array = new JsonArray();
-    users.forEach(user -> array.add(UserViews.summary(user)));
-    return array;
   }
 
   private static UserChanges changes(Request request) {

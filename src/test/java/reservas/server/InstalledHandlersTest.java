@@ -54,7 +54,15 @@ class InstalledHandlersTest {
         { "admin_update_user", "{'op':'admin_update_user'," + bad + ",'target_user':'joao','role':'admin'}",
             "Dados em formato invalido" },
         { "admin_delete_user", "{'op':'admin_delete_user'," + bad + ",'target_user':'joao'}",
-            "Dados em formato invalido" } };
+            "Dados em formato invalido" },
+        { "create_room",
+            "{'op':'create_room'," + bad + ",'name':'Lab 3','capacity':'30','location':'Bloco C','resources':[]}",
+            "Dados da sala em formato invalido" },
+        { "list_rooms", "{'op':'list_rooms'," + bad + "}", "Filtros em formato invalido" },
+        { "read_room", "{'op':'read_room'," + bad + ",'room_id':'1'}", "Dados em formato invalido" },
+        { "update_room", "{'op':'update_room'," + bad + ",'room_id':'1','capacity':'20'}",
+            "Dados da sala em formato invalido" },
+        { "delete_room", "{'op':'delete_room'," + bad + ",'room_id':'1'}", "Dados em formato invalido" } };
 
     for (String[] c : cases) {
       assertResponse(c[0] + "_response", "400", c[2], handle(c[1]));

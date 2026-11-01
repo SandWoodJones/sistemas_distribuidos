@@ -3,12 +3,17 @@ package reservas.server;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+
+import com.google.gson.JsonArray;
+import com.google.gson.JsonParser;
 
 import reservas.protocol.Codec;
 import reservas.protocol.ProtocolException;
 import reservas.protocol.Role;
+import reservas.protocol.RoomStatus;
 
 // Persistência, toda operação que pode conflitar decide o conflito aqui e devolve `Optional` vazio; quem chama traduz para 409.
 // Guarda uma conexão pela vida inteira
@@ -144,6 +149,49 @@ public final class SqliteStore implements AutoCloseable {
     database.update("UPDATE sessions SET last_used = ? WHERE token = ?", now.toString(), token);
   }
 
+  public Optional<Room> findRoom(long id) {
+    return database.queryOne("SELECT * FROM rooms WHERE id = ?", SqliteStore::toRoom, id);
+  }
+
+  public Optional<Room> findRoomByName(String name) {
+    return database.queryOne("SELECT * FROM rooms WHERE name = ?", SqliteStore::toRoom, name);
+  }
+
+  public List<Room> listRooms(int minCapacity) {
+    return database.queryList("SELECT * FROM rooms WHERE capacity >= ? ORDER BY id", SqliteStore::toRoom, minCapacity);
+  }
+
+  // Vazio se `name` já está cadastrado
+  public synchronized Optional<Room> createRoom(String name, int capacity, String location, List<String> resources) {
+    if (findRoomByName(name).isPresent()) {
+      return Optional.empty();
+    }
+
+    long id = database.insert("INSERT INTO rooms (name, capacity, location, resources, status) VALUES (?, ?, ?, ?, ?)",
+        name, capacity, location, toJson(resources), RoomStatus.ACTIVE.wireName());
+    return Optional.of(new Room(id, name, capacity, location, resources, RoomStatus.ACTIVE));
+  }
+
+  // `false` se o novo `name` já pertence a outra sala
+  public synchronized boolean updateRoom(long id, RoomChanges changes) {
+    Room updated = findRoom(id)
+        .orElseThrow(() -> new IllegalStateException("atualizacao de sala inexistente, id=" + id)).with(changes);
+
+    Optional<Room> sameName = findRoomByName(updated.name());
+    if (sameName.isPresent() && sameName.get().id() != id) {
+      return false;
+    }
+
+    database.update("UPDATE rooms SET name = ?, capacity = ?, location = ?, resources = ?, status = ? WHERE id = ?",
+        updated.name(), updated.capacity(), updated.location(), toJson(updated.resources()),
+        updated.status().wireName(), id);
+    return true;
+  }
+
+  public void deleteRoom(long id) {
+    database.update("DELETE FROM rooms WHERE id = ?", id);
+  }
+
   @Override
   public synchronized void close() {
     database.close();
@@ -152,15 +200,34 @@ public final class SqliteStore implements AutoCloseable {
   private static User toUser(ResultSet row) throws SQLException {
     String role = row.getString("role");
     return new User(row.getLong("id"), row.getString("name"), row.getString("email"), row.getString("password"),
-        Role.fromWire(role).orElseThrow(() -> corrupt("role", role)), Instant.parse(row.getString("created_at")));
+        Role.fromWire(role).orElseThrow(() -> corrupt("users.role", role)), Instant.parse(row.getString("created_at")));
   }
 
   private static Session toSession(ResultSet row) throws SQLException {
     return new Session(row.getString("token"), row.getLong("user_id"), Instant.parse(row.getString("last_used")));
   }
 
+  private static Room toRoom(ResultSet row) throws SQLException {
+    String status = row.getString("status");
+    return new Room(row.getLong("id"), row.getString("name"), row.getInt("capacity"), row.getString("location"),
+        fromJson(row.getString("resources")),
+        RoomStatus.fromWire(status).orElseThrow(() -> corrupt("rooms.status", status)));
+  }
+
+  private static String toJson(List<String> values) {
+    JsonArray array = new JsonArray();
+    values.forEach(array::add);
+    return array.toString();
+  }
+
+  private static List<String> fromJson(String text) {
+    List<String> values = new ArrayList<>();
+    JsonParser.parseString(text).getAsJsonArray().forEach(item -> values.add(item.getAsString()));
+    return values;
+  }
+
   private static ProtocolException corrupt(String column, String value) {
     return ProtocolException
-        .internal("valor invalido gravado em users." + column + ": " + Codec.snippet(String.valueOf(value)));
+        .internal("valor invalido gravado em " + column + ": " + Codec.snippet(String.valueOf(value)));
   }
 }
