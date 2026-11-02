@@ -3,17 +3,16 @@ package reservas.server;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
-import com.google.gson.JsonArray;
 import com.google.gson.JsonParser;
 
 import reservas.protocol.Codec;
 import reservas.protocol.ProtocolException;
 import reservas.protocol.Role;
 import reservas.protocol.RoomStatus;
+import reservas.protocol.StringArrays;
 
 // Persistência, toda operação que pode conflitar decide o conflito aqui e devolve `Optional` vazio; quem chama traduz para 409.
 // Guarda uma conexão pela vida inteira
@@ -215,15 +214,11 @@ public final class SqliteStore implements AutoCloseable {
   }
 
   private static String toJson(List<String> values) {
-    JsonArray array = new JsonArray();
-    values.forEach(array::add);
-    return array.toString();
+    return StringArrays.toJson(values).toString();
   }
 
   private static List<String> fromJson(String text) {
-    List<String> values = new ArrayList<>();
-    JsonParser.parseString(text).getAsJsonArray().forEach(item -> values.add(item.getAsString()));
-    return values;
+    return StringArrays.fromJson(JsonParser.parseString(text).getAsJsonArray());
   }
 
   private static ProtocolException corrupt(String column, String value) {

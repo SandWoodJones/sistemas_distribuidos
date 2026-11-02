@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static reservas.protocol.ProtocolAssertions.assertStatus;
+import static reservas.server.Fixtures.T0;
 import static reservas.server.Fixtures.T0_ON_THE_WIRE;
 
 import java.io.IOException;
@@ -18,6 +19,7 @@ import org.junit.jupiter.api.Timeout;
 import com.google.gson.JsonObject;
 
 import reservas.protocol.Fields;
+import reservas.server.Bootstrap;
 import reservas.server.TestServer;
 
 @Timeout(10)
@@ -97,5 +99,54 @@ class SessionTest {
     assertStatus("200", session.deleteUser("senha123"));
     assertFalse(session.isLoggedIn());
     assertStatus("401", session.login(EMAIL, "senha123"));
+  }
+
+  @Test
+  void sendsTheAdminOpsWithTheAdminToken() throws IOException {
+    session.register(EMAIL, "joao", "senha123");
+    Bootstrap.seedAdmin(server.store(), T0);
+    session.login(Bootstrap.ADMIN_EMAIL, Bootstrap.ADMIN_PASSWORD);
+
+    JsonObject users = session.adminListUsers();
+    assertStatus("200", users);
+    assertEquals("2", users.get(Fields.COUNT).getAsString());
+
+    assertStatus("400", session.adminUpdateUser("joao", "", "", ""));
+    assertStatus("200", session.adminUpdateUser("joao", "joaosilva", "", "admin"));
+
+    JsonObject promoted = session.adminReadUser("joaosilva");
+    assertStatus("200", promoted);
+    assertEquals("admin", promoted.get(Fields.ROLE).getAsString());
+
+    assertStatus("200", session.adminDeleteUser("joaosilva"));
+    assertStatus("404", session.adminReadUser("joaosilva"));
+  }
+
+  @Test
+  void sendsTheRoomOpsAndLeavesBlankFiltersOut() throws IOException {
+    Bootstrap.seedAdmin(server.store(), T0);
+    session.login(Bootstrap.ADMIN_EMAIL, Bootstrap.ADMIN_PASSWORD);
+
+    RoomFields b12 = new RoomFields("Sala B12", "12", "Bloco B", List.of("projetor", "tv"));
+    JsonObject created = session.createRoom(b12);
+    assertStatus("201", created);
+    String id = created.get(Fields.ROOM_ID).getAsString();
+
+    JsonObject all = session.listRooms("", "", "", "");
+    assertEquals("1", all.get(Fields.COUNT).getAsString());
+    assertFalse(all.getAsJsonArray(Fields.ROOMS).get(0).getAsJsonObject().has(Fields.AVAILABLE));
+    assertTrue(traffic.stream().noneMatch(line -> line.contains("\"date\"")), traffic.toString());
+    assertEquals("0", session.listRooms("2026-09-15", "14:00", "16:00", "13").get(Fields.COUNT).getAsString());
+
+    assertEquals(b12, RoomFields.from(session.readRoom(id)));
+
+    RoomFields renamed = new RoomFields("Sala B13", "16", "Bloco B", List.of());
+    assertStatus("200", session.updateRoom(id, renamed, "inactive"));
+    JsonObject read = session.readRoom(id);
+    assertEquals(renamed, RoomFields.from(read));
+    assertEquals("inactive", read.get(Fields.ROOM_STATUS).getAsString());
+
+    assertStatus("200", session.deleteRoom(id));
+    assertStatus("404", session.readRoom(id));
   }
 }
