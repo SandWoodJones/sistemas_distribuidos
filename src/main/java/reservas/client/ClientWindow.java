@@ -194,7 +194,7 @@ public final class ClientWindow extends JFrame {
       RoomFields loaded = RoomFields.from(room);
       name.setText(loaded.name());
       capacity.setText(loaded.capacity());
-      location.setText(loaded.capacity());
+      location.setText(loaded.location());
       resources.setText(ListText.format(loaded.resources()));
       roomStatus.setSelectedItem(room.get(Fields.ROOM_STATUS).getAsString());
     });

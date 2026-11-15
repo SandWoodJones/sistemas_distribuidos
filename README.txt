@@ -1,5 +1,5 @@
 ===============================================================================
- Sistema Inteligente de Reserva de Salas  --  EP-1
+ Sistema Inteligente de Reserva de Salas  --  EP-2
  Sistemas Distribuidos  --  BCC / UTFPR-PG  --  Prof. Dr. Richard Ribeiro
  Aluno: Raul Rodrigues de Oliveira  --  RA 2422727
 ===============================================================================
@@ -69,6 +69,12 @@ abertos na mesma pasta deste README.
     ser contatado, e um painel que mostra todas as mensagens enviadas e
     recebidas. Para testar na mesma maquina, use IP 127.0.0.1.
 
+    Abas: Cadastro, Login e Minha conta (EP-1); Usuarios, Salas, Nova sala
+    e Editar sala (EP-2). Listagens e consultas aparecem na tabela
+    "Resultado". Em "Editar sala", clique em "Carregar" antes de
+    "Atualizar sala": o formulario e preenchido com a sala atual e a
+    atualizacao envia a sala inteira.
+
 
 5. BANCO DE DADOS E USUARIO ADMINISTRADOR
 ---------------------------------------------------------------------------
@@ -78,12 +84,12 @@ corrente e cadastra um administrador inicial:
     usuario: admin      senha: admin      email: admin@admin.com
 
 Isso aparece no terminal como:
-    "administrador inicial criado: user admin, email admin@admin.com"
+    "administrador inicial criado: user admin, email admin@admin.com, senha admin"
 
-O protocolo nao possui operacao para criar o primeiro administrador (todo
-register nasce com role "user"), por isso ele e semeado junto com o
-esquema do banco. Apagar reservas.db zera o sistema e recria o admin na
-execucao seguinte.
+Ao iniciar sem nenhum administrador no banco, o servidor cria esta conta
+(regra 3.15 do protocolo v2.6); ela e igual nos servidores de todos os
+grupos. Apagar reservas.db zera o sistema e recria o admin na execucao
+seguinte.
 
 
 6. BIBLIOTECAS INCLUIDAS (pasta libs/)
@@ -116,22 +122,31 @@ Se nao houver internet, use o procedimento da secao 3, que nao depende
 de Maven.
 
 
-8. OPERACOES IMPLEMENTADAS NESTA ENTREGA (EP-1)
+8. OPERACOES IMPLEMENTADAS NESTA ENTREGA (EP-2)
 ---------------------------------------------------------------------------
-    register       cadastro de usuario comum          (C)
-    read_user      leitura do proprio cadastro        (R)
-    update_user    atualizacao do proprio cadastro    (U)
-    delete_user    exclusao do proprio cadastro       (D)
-    login          autenticacao, devolve token
-    logout         encerra a sessao
+Da EP-1, sem mudanca de comportamento:
+    register, login, logout, read_user, update_user, delete_user
 
-As operacoes de salas, reservas e administracao (admin_*) pertencem a
-entrega final e nao fazem parte da EP-1.
+Administracao de usuarios (exigem login de administrador):
+    admin_list_users   lista todos os usuarios                 (R)
+    admin_read_user    le o cadastro de um usuario             (R)
+    admin_update_user  altera usuario, senha ou perfil         (U)
+    admin_delete_user  remove a conta de um usuario            (D)
+
+Salas:
+    create_room        cadastra uma sala (admin)               (C)
+    list_rooms         lista as salas, com filtros opcionais   (R)
+    read_room          le uma sala                             (R)
+    update_room        altera uma sala (admin)                 (U)
+    delete_room        remove uma sala (admin)                 (D)
+
+As operacoes de reserva pertencem a entrega final e nao fazem parte
+da EP-2.
 
 
 9. PROTOCOLO
 ---------------------------------------------------------------------------
-Implementa o protocolo de troca de mensagens do grupo, versao 2.4:
+Implementa o protocolo de troca de mensagens do grupo, versao 2.6:
 
     https://pedrosalvatori.github.io/protocolo-reserva-salas/
 
