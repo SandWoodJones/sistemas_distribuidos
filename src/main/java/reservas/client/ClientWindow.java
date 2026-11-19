@@ -176,7 +176,8 @@ public final class ClientWindow extends JFrame {
     JTextField capacity = form.field("Capacidade");
     JTextField location = form.field("Local");
     JTextField resources = form.field("Recursos");
-    form.button("Cadastrar sala", () -> session.createRoom(roomFields(name, capacity, location, resources)));
+    JTextField slots = form.field("Horarios");
+    form.button("Cadastrar sala", () -> session.createRoom(roomFields(name, capacity, location, resources, slots)));
 
     return form.panel();
   }
@@ -188,6 +189,7 @@ public final class ClientWindow extends JFrame {
     JTextField capacity = form.field("Capacidade");
     JTextField location = form.field("Local");
     JTextField resources = form.field("Recursos");
+    JTextField slots = form.field("Horarios");
     JComboBox<String> roomStatus = form.choice("Estado", "active", "inactive");
 
     form.button("Carregar", () -> session.readRoom(text(id)), room -> {
@@ -196,10 +198,12 @@ public final class ClientWindow extends JFrame {
       capacity.setText(loaded.capacity());
       location.setText(loaded.location());
       resources.setText(ListText.format(loaded.resources()));
+      slots.setText(ListText.format(loaded.slots()));
       roomStatus.setSelectedItem(room.get(Fields.ROOM_STATUS).getAsString());
     });
     form.button("Atualizar sala",
-        () -> session.updateRoom(text(id), roomFields(name, capacity, location, resources), selected(roomStatus)));
+        () -> session.updateRoom(text(id), roomFields(name, capacity, location, resources, slots),
+            selected(roomStatus)));
     form.button("Remover sala", () -> session.deleteRoom(text(id)));
 
     return form.panel();
@@ -335,8 +339,9 @@ public final class ClientWindow extends JFrame {
   }
 
   private static RoomFields roomFields(JTextField name, JTextField capacity, JTextField location,
-      JTextField resources) {
-    return new RoomFields(text(name), text(capacity), text(location), ListText.parse(text(resources)));
+      JTextField resources, JTextField slots) {
+    return new RoomFields(text(name), text(capacity), text(location), ListText.parse(text(resources)),
+        ListText.parse(text(slots)));
   }
 
   private static String selected(JComboBox<String> choice) {

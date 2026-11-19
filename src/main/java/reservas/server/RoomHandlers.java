@@ -12,6 +12,7 @@ import reservas.protocol.ProtocolException;
 import reservas.protocol.Request;
 import reservas.protocol.Responses;
 import reservas.protocol.RoomStatus;
+import reservas.protocol.Slot;
 import reservas.protocol.Status;
 
 public final class RoomHandlers {
@@ -38,10 +39,12 @@ public final class RoomHandlers {
     String name = request.required(Fields.NAME, Formats.ROOM_NAME);
     int capacity = Integer.parseInt(request.required(Fields.CAPACITY, Formats.CAPACITY));
     String location = request.required(Fields.LOCATION, Formats.LOCATION);
-    List<String> resources = request.requiredStrings(Fields.RESOURCES);
+    List<String> resources = request.resources();
+    List<Slot> slots = request.slots();
 
     Caller.authenticate(request, context).requireAdmin();
-    Room room = context.store().createRoom(name, capacity, location, resources).orElseThrow(() -> nameInUse(name));
+    Room room = context.store().createRoom(name, capacity, location, resources, slots)
+        .orElseThrow(() -> nameInUse(name));
 
     JsonObject response = Responses.of(Op.CREATE_ROOM, Status.CREATED, "Sala cadastrada com sucesso");
     response.addProperty(Fields.ROOM_ID, Long.toString(room.id()));
@@ -50,11 +53,8 @@ public final class RoomHandlers {
 
   static JsonObject listRooms(JsonObject json, ServerContext context) {
     Request request = new Request(json, FILTERS_BAD_REQUEST);
-    request.optional(Fields.DATE, Formats.DATE);
-    request.optional(Fields.START_TIME, Formats.TIME);
-    request.optional(Fields.END_TIME, Formats.TIME);
-    boolean withSlot = request.allOrNone(Fields.DATE, Fields.START_TIME, Fields.END_TIME);
-    int minCapacity = request.optional(Fields.MIN_CAPACITY, Formats.CAPACITY).map(Integer::parseInt)
+    boolean withSlot = request.windowFilter().isPresent();
+    int minCapacity = request.filter(Fields.MIN_CAPACITY, Formats.CAPACITY).map(Integer::parseInt)
         .orElse(ANY_CAPACITY);
 
     Caller.authenticate(request, context);
@@ -113,11 +113,12 @@ public final class RoomHandlers {
     String name = request.optional(Fields.NAME, Formats.ROOM_NAME).orElse(null);
     Integer capacity = request.optional(Fields.CAPACITY, Formats.CAPACITY).map(Integer::valueOf).orElse(null);
     String location = request.optional(Fields.LOCATION, Formats.LOCATION).orElse(null);
-    List<String> resources = request.optionalStrings(Fields.RESOURCES).orElse(null);
+    List<String> resources = request.resourcesChange().orElse(null);
     RoomStatus status = request.optional(Fields.ROOM_STATUS, Formats.ROOM_STATUS).flatMap(RoomStatus::fromWire)
         .orElse(null);
+    List<Slot> slots = request.slotsChange().orElse(null);
 
-    return new RoomChanges(name, capacity, location, resources, status);
+    return new RoomChanges(name, capacity, location, resources, status, slots);
   }
 
   private static long roomId(Request request) {

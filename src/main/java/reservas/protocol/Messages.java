@@ -8,6 +8,7 @@ public final class Messages {
   public static final String INTERNAL_ERROR = "Erro interno do servidor";
   public static final String TOKEN_BAD_REQUEST = "Token em formato invalido";
   public static final String DATA_BAD_REQUEST = "Dados em formato invalido";
+  public static final String NOTHING_TO_UPDATE = "Nenhum dado para atualizar";
 
   private Messages() {
   }

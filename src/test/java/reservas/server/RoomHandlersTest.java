@@ -10,6 +10,7 @@ import static reservas.server.Fixtures.OTHER_TOKEN;
 import static reservas.server.Fixtures.T0;
 import static reservas.server.Fixtures.TOKEN;
 
+import java.time.DayOfWeek;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -20,17 +21,21 @@ import org.junit.jupiter.api.Test;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 
+import reservas.protocol.ClassPeriod;
 import reservas.protocol.Fields;
 import reservas.protocol.ProtocolException;
 import reservas.protocol.Role;
 import reservas.protocol.RoomStatus;
+import reservas.protocol.Slot;
 import reservas.protocol.TestJson;
 
 class RoomHandlersTest {
   private static final String ADMIN = TOKEN;
   private static final String COMMON = OTHER_TOKEN;
-  private static final String B12 = ",'name':'Sala B12','capacity':'12','location':'Bloco B - 1 andar','resources':['projetor','tv']";
-  private static final String SLOT = ",'date':'2026-09-15','start_time':'14:00','end_time':'16:00'";
+  private static final String B12 = ",'name':'Sala B12','capacity':'12','location':'Bloco B - 1 andar','resources':['projetor','tv'],'slots':['3T1','3T2']";
+  private static final String SLOT = ",'date':'2026-09-15','start_time':'13:00','end_time':'14:40'";
+  private static final List<Slot> TUESDAY_AFTERNOON = List.of(new Slot(DayOfWeek.TUESDAY, ClassPeriod.T1),
+      new Slot(DayOfWeek.TUESDAY, ClassPeriod.T2));
 
   private final SqliteStore store = SqliteStore.openInMemory();
   private final List<ProtocolException> reported = new ArrayList<>();
@@ -47,12 +52,17 @@ class RoomHandlersTest {
     User joao = store.createUser("joao", "joao.silva@email.com", "senha123", Role.USER, T0).orElseThrow();
     store.createSession(COMMON, joao.id(), T0).orElseThrow();
 
-    b12 = store.createRoom("Sala B12", 12, "Bloco B - 1 andar", List.of("projetor", "tv")).orElseThrow();
+    b12 = store.createRoom("Sala B12", 12, "Bloco B - 1 andar", List.of("projetor", "tv"), TUESDAY_AFTERNOON)
+        .orElseThrow();
   }
 
   @AfterEach
   void closeStore() {
     store.close();
+  }
+
+  private static Slot slot(String wireName) {
+    return Slot.fromWire(wireName).orElseThrow();
   }
 
   private JsonObject handle(String op, String token, String fields) {
@@ -70,7 +80,7 @@ class RoomHandlersTest {
   @Test
   void createRoomAnswersTheNewIdAndTheRoomStartsActive() {
     JsonObject response = handle("create_room", ADMIN,
-        ",'name':'Lab 3','capacity':'30','location':'Bloco C','resources':[]");
+        ",'name':'Lab 3','capacity':'30','location':'Bloco C','resources':[],'slots':['5N1','2M1','7M6']");
 
     assertKeys(response, Fields.OP, Fields.STATUS, Fields.MESSAGE, Fields.ROOM_ID);
     assertResponse("create_room_response", "201", "Sala cadastrada com sucesso", response);
@@ -80,6 +90,8 @@ class RoomHandlersTest {
     assertEquals(30, lab.capacity());
     assertEquals(List.of(), lab.resources());
     assertEquals(RoomStatus.ACTIVE, lab.status());
+    assertEquals(List.of(new Slot(DayOfWeek.THURSDAY, ClassPeriod.N1), new Slot(DayOfWeek.MONDAY, ClassPeriod.M1),
+        new Slot(DayOfWeek.SATURDAY, ClassPeriod.M6)), lab.slots());
   }
 
   @Test
@@ -90,17 +102,29 @@ class RoomHandlersTest {
 
   @Test
   void createRoomRejectsEachFieldOutsideTheFormat() {
+    String slots = ",'slots':['2M1']";
+    String lab = ",'name':'Lab 3','capacity':'12','location':'Bloco B'";
     String[][] cases = {
-        { "name", ",'capacity':'12','location':'Bloco B','resources':[]" },
-        { "name", ",'name':'','capacity':'12','location':'Bloco B','resources':[]" },
-        { "name", ",'name':'Sala Ã','capacity':'12','location':'Bloco B','resources':[]" },
-        { "capacity", ",'name':'Lab 3','capacity':'0','location':'Bloco B','resources':[]" },
-        { "capacity", ",'name':'Lab 3','capacity':12,'location':'Bloco B','resources':[]" },
-        { "location", ",'name':'Lab 3','capacity':'12','location':'Bloco B / 2','resources':[]" },
-        { "resources", ",'name':'Lab 3','capacity':'12','location':'Bloco B'" },
-        { "resources", ",'name':'Lab 3','capacity':'12','location':'Bloco B','resources':'projetor'" },
-        { "resources", ",'name':'Lab 3','capacity':'12','location':'Bloco B','resources':['tv',1]" },
-        { "resources", ",'name':'Lab 3','capacity':'12','location':'Bloco B','resources':null" } };
+        { "name", ",'capacity':'12','location':'Bloco B','resources':[]" + slots },
+        { "name", ",'name':'','capacity':'12','location':'Bloco B','resources':[]" + slots },
+        { "name", ",'name':'Sala Ã','capacity':'12','location':'Bloco B','resources':[]" + slots },
+        { "capacity", ",'name':'Lab 3','capacity':'0','location':'Bloco B','resources':[]" + slots },
+        { "capacity", ",'name':'Lab 3','capacity':12,'location':'Bloco B','resources':[]" + slots },
+        { "location", ",'name':'Lab 3','capacity':'12','location':'Bloco B / 2','resources':[]" + slots },
+        { "resources", lab + slots },
+        { "resources", lab + ",'resources':'projetor'" + slots },
+        { "resources", lab + ",'resources':['tv',1]" + slots },
+        { "resources", lab + ",'resources':null" + slots },
+        { "resources", lab + ",'resources':['projetor/tv']" + slots },
+        { "resources", lab + ",'resources':['0']" + slots },
+        { "slots", lab + ",'resources':[]" },
+        { "slots", lab + ",'resources':[],'slots':[]" },
+        { "slots", lab + ",'resources':[],'slots':'2M1'" },
+        { "slots", lab + ",'resources':[],'slots':null" },
+        { "slots", lab + ",'resources':[],'slots':['1M1']" },
+        { "slots", lab + ",'resources':[],'slots':['2N6']" },
+        { "slots", lab + ",'resources':[],'slots':['2M1','3T1','2M1']" }
+    };
 
     for (String[] c : cases) {
       assertResponse("create_room_response", "400", "Dados da sala em formato invalido",
@@ -111,7 +135,7 @@ class RoomHandlersTest {
 
   @Test
   void listRoomsAnswersEveryRoomToAnyLoggedUser() {
-    store.createRoom("Lab 3", 30, "Bloco C", List.of()).orElseThrow();
+    store.createRoom("Lab 3", 30, "Bloco C", List.of(), TUESDAY_AFTERNOON).orElseThrow();
 
     JsonObject response = handle("list_rooms", COMMON, "");
 
@@ -121,15 +145,16 @@ class RoomHandlersTest {
 
     JsonObject first = response.getAsJsonArray(Fields.ROOMS).get(0).getAsJsonObject();
     assertKeys(first, Fields.ROOM_ID, Fields.NAME, Fields.CAPACITY, Fields.LOCATION, Fields.RESOURCES,
-        Fields.ROOM_STATUS);
-    assertEquals(TestJson.object("{'room_id':'" + b12.id() + "','name':'Sala B12','capacity':'12',"
-        + "'location':'Bloco B - 1 andar','resources':['projetor','tv'],'room_status':'active'}"), first);
+        Fields.ROOM_STATUS, Fields.SLOTS);
+    assertEquals(TestJson.object("{'room_id':'" + b12.id()
+        + "','name':'Sala B12','capacity':'12','location':'Bloco B - 1 andar','resources':['projetor','tv'],'room_status':'active','slots':['3T1','3T2']}"),
+        first);
   }
 
   @Test
   void listRoomsFiltersByCapacityAndMarksAvailabilityForASlot() {
-    store.createRoom("Lab 3", 30, "Bloco C", List.of()).orElseThrow();
-    store.updateRoom(b12.id(), new RoomChanges(null, null, null, null, RoomStatus.INACTIVE));
+    store.createRoom("Lab 3", 30, "Bloco C", List.of(), TUESDAY_AFTERNOON).orElseThrow();
+    store.updateRoom(b12.id(), new RoomChanges(null, null, null, null, RoomStatus.INACTIVE, null));
 
     JsonArray all = handle("list_rooms", COMMON, SLOT).getAsJsonArray(Fields.ROOMS);
     assertEquals("false", all.get(0).getAsJsonObject().get(Fields.AVAILABLE).getAsString());
@@ -139,19 +164,24 @@ class RoomHandlersTest {
     assertEquals("1", large.get(Fields.COUNT).getAsString());
     assertEquals("Lab 3", large.getAsJsonArray(Fields.ROOMS).get(0).getAsJsonObject().get(Fields.NAME).getAsString());
 
-    JsonObject none = handle("list_rooms", COMMON, ",'min_capacity':'31','date':'','start_time':'','end_time':''");
+    JsonObject none = handle("list_rooms", COMMON, ",'min_capacity':'31'");
     assertEquals("0", none.get(Fields.COUNT).getAsString());
     assertEquals(0, none.getAsJsonArray(Fields.ROOMS).size());
   }
 
   @Test
-  void listRoomsRejectsAPartialSlotAndFiltersOutsideTheFormat() {
+  void listRoomsRejectsAPartialSlotABlankFilterAndAnImpossibleSlot() {
     String[][] cases = {
         { "start_time", ",'date':'2026-09-15'" },
-        { "end_time", ",'date':'2026-09-15','start_time':'14:00'" },
-        { "date", ",'start_time':'14:00','end_time':'16:00','date':''" },
-        { "date", ",'date':'15/09/2026','start_time':'14:00','end_time':'16:00'" },
-        { "start_time", ",'date':'2026-09-15','start_time':'24:00','end_time':'16:00'" },
+        { "end_time", ",'date':'2026-09-15','start_time':'13:00'" },
+        { "date", ",'start_time':'13:00','end_time':'14:40','date':''" },
+        { "date", ",'date':'15/09/2026','start_time':'13:00','end_time':'14:40'" },
+        { "start_time", ",'date':'2026-09-15','start_time':'14:00','end_time':'14:40'" },
+        { "date", ",'date':'2026-02-30','start_time':'13:00','end_time':'14:40'" },
+        { "end_time", ",'date':'2026-09-15','start_time':'14:40','end_time':'14:40'" },
+        { "end_time", ",'date':'2026-09-15','start_time':'14:40','end_time':'13:50'" },
+        { "date", ",'date':null" },
+        { "min_capacity", ",'min_capacity':''" },
         { "min_capacity", ",'min_capacity':'0'" } };
 
     for (String[] c : cases) {
@@ -165,10 +195,11 @@ class RoomHandlersTest {
     JsonObject response = handle("read_room", COMMON, ",'room_id':'" + b12.id() + "'");
 
     assertKeys(response, Fields.OP, Fields.STATUS, Fields.MESSAGE, Fields.ROOM_ID, Fields.NAME, Fields.CAPACITY,
-        Fields.LOCATION, Fields.RESOURCES, Fields.ROOM_STATUS);
+        Fields.LOCATION, Fields.RESOURCES, Fields.ROOM_STATUS, Fields.SLOTS);
     assertResponse("read_room_response", "200", "Consulta realizada com sucesso", response);
     assertEquals("Sala B12", response.get(Fields.NAME).getAsString());
     assertEquals(TestJson.json("['projetor','tv']"), response.get(Fields.RESOURCES).toString());
+    assertEquals(TestJson.json("['3T1','3T2']"), response.get(Fields.SLOTS).toString());
   }
 
   @Test
@@ -179,23 +210,39 @@ class RoomHandlersTest {
     assertKeys(response, Fields.OP, Fields.STATUS, Fields.MESSAGE);
     assertResponse("update_room_response", "200", "Sala atualizada com sucesso", response);
     assertEquals(
-        new Room(b12.id(), "Sala B12", 16, "Bloco B - 1 andar", List.of("projetor", "tv", "quadro"), RoomStatus.ACTIVE),
+        new Room(b12.id(), "Sala B12", 16, "Bloco B - 1 andar", List.of("projetor", "tv", "quadro"), RoomStatus.ACTIVE,
+            TUESDAY_AFTERNOON),
         stored(b12));
 
-    assertStatus("200", handle("update_room", ADMIN, ",'room_id':'" + b12.id() + "','room_status':'inactive'"));
+    assertStatus("200", handle("update_room", ADMIN,
+        ",'room_id':'" + b12.id() + "','room_status':'inactive','resources':[],'slots':[]"));
     assertEquals(RoomStatus.INACTIVE, stored(b12).status());
     assertEquals(3, stored(b12).resources().size());
+    assertEquals(TUESDAY_AFTERNOON, stored(b12).slots());
 
-    assertStatus("200", handle("update_room", ADMIN, ",'room_id':'" + b12.id() + "','resources':''"));
-    assertEquals(3, stored(b12).resources().size());
+    assertStatus("200", handle("update_room", ADMIN, ",'room_id':'" + b12.id() + "','slots':['4T3']"));
+    assertEquals(List.of(slot("4T3")), stored(b12).slots());
 
-    assertStatus("200", handle("update_room", ADMIN, ",'room_id':'" + b12.id() + "','resources':[]"));
+    assertStatus("200", handle("update_room", ADMIN, ",'room_id':'" + b12.id() + "','resources':['0']"));
     assertEquals(List.of(), stored(b12).resources());
   }
 
   @Test
+  void updateRoomRejectsNothingToChange() {
+    String id = ",'room_id':'" + b12.id() + "'";
+    for (String fields : new String[] { id, id + ",'name':'','capacity':'','location':'','room_status':''",
+        id + ",'name':'','capacity':'','location':'','room_status':'','resources':[],'slots':[]" }) {
+      assertResponse("update_room_response", "400", "Nenhum dado para atualizar", handle("update_room", ADMIN, fields));
+    }
+
+    assertResponse("update_room_response", "400", "Dados da sala em formato invalido",
+        handle("update_room", ADMIN, id + ",'name':'','slots':['9M1']"));
+    assertEquals(b12, stored(b12));
+  }
+
+  @Test
   void updateRoomRejectsANameTakenByAnotherRoom() {
-    store.createRoom("Lab 3", 30, "Bloco C", List.of()).orElseThrow();
+    store.createRoom("Lab 3", 30, "Bloco C", List.of(), TUESDAY_AFTERNOON).orElseThrow();
 
     assertResponse("update_room_response", "409", "Sala ja cadastrada",
         handle("update_room", ADMIN, ",'room_id':'" + b12.id() + "','name':'Lab 3'"));
@@ -213,6 +260,11 @@ class RoomHandlersTest {
         { "location", id + ",'location':'Bloco Ç'" },
         { "resources", id + ",'resources':null" },
         { "resources", id + ",'resources':[['tv']]" },
+        { "resources", id + ",'resources':''" },
+        { "resources", id + ",'resources':['0','tv']" },
+        { "slots", id + ",'slots':null" },
+        { "slots", id + ",'slots':['2M1','2M1']" },
+        { "slots", id + ",'slots':['9M1']" },
         { "room_status", id + ",'room_status':'fechada'" } };
 
     for (String[] c : cases) {
@@ -250,7 +302,7 @@ class RoomHandlersTest {
   void everyRoomWriteRefusesACommonUser() {
     String id = ",'room_id':'" + b12.id() + "'";
     String[][] cases = {
-        { "create_room", ",'name':'Lab 3','capacity':'30','location':'Bloco C','resources':[]" },
+        { "create_room", ",'name':'Lab 3','capacity':'30','location':'Bloco C','resources':[],'slots':['2M1']" },
         { "update_room", id + ",'room_status':'inactive'" },
         { "delete_room", id } };
 

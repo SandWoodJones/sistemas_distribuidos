@@ -31,7 +31,8 @@ final class Schema {
         capacity  INTEGER NOT NULL,
         location  TEXT NOT NULL,
         resources TEXT NOT NULL,
-        status    TEXT NOT NULL
+        status    TEXT NOT NULL,
+        slots     TEXT NOT NULL
       )
       """
   };

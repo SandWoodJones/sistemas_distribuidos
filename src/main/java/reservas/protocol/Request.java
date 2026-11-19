@@ -1,9 +1,13 @@
 package reservas.protocol;
 
+import java.time.LocalDate;
+import java.time.LocalTime;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 import com.google.gson.JsonElement;
@@ -11,6 +15,8 @@ import com.google.gson.JsonObject;
 
 // Leitura validada de uma requisição
 public final class Request {
+  private static final List<String> CLEAR_ALL = List.of(Fields.CLEAR_RESOURCES);
+
   private final JsonObject json;
   private final String badRequest;
 
@@ -22,10 +28,6 @@ public final class Request {
   // Ausente, `null`, não-string e fora de formato são 400
   public String required(String field, Pattern format) {
     return checked(field, asString(field, mustExist(field)), format);
-  }
-
-  public List<String> requiredStrings(String field) {
-    return asStrings(field, mustExist(field));
   }
 
   // Presente em toda requisição menos `register` e `login`
@@ -43,17 +45,44 @@ public final class Request {
     return value.isEmpty() ? Optional.empty() : Optional.of(checked(field, value, format));
   }
 
-  public Optional<List<String>> optionalStrings(String field) {
-    JsonElement element = json.get(field);
-    if (element == null || isEmptyString(element)) {
+  // Filtro ausente é sem filtro
+  public Optional<String> filter(String field, Pattern format) {
+    return json.has(field) ? Optional.of(required(field, format)) : Optional.empty();
+  }
+
+  // `date`, `start_time` e `end_time` vêm todos ou nenhum
+  public Optional<TimeWindow> windowFilter() {
+    Optional<LocalDate> date = filter(Fields.DATE, Formats.DATE).map(value -> calendarDate(Fields.DATE, value));
+    Optional<LocalTime> start = filter(Fields.START_TIME, Formats.START_TIME).map(LocalTime::parse);
+    Optional<LocalTime> end = filter(Fields.END_TIME, Formats.END_TIME).map(LocalTime::parse);
+
+    if (!allOrNone(Fields.DATE, Fields.START_TIME, Fields.END_TIME)) {
       return Optional.empty();
     }
 
-    return Optional.of(asStrings(field, element));
+    return Optional.of(window(date.orElseThrow(), start.orElseThrow(), end.orElseThrow()));
+  }
+
+  public List<String> resources() {
+    return withoutClearMark(requiredList(Fields.RESOURCES, Formats.RESOURCE));
+  }
+
+  // Ausente ou `[]` mantém, `["0"]` apaga todos.
+  public Optional<List<String>> resourcesChange() {
+    return listChange(Fields.RESOURCES, Formats.RESOURCE)
+        .map(resources -> resources.equals(CLEAR_ALL) ? List.of() : withoutClearMark(resources));
+  }
+
+  public List<Slot> slots() {
+    return slots(requiredList(Fields.SLOTS, Formats.SLOT));
+  }
+
+  public Optional<List<Slot>> slotsChange() {
+    return listChange(Fields.SLOTS, Formats.SLOT).map(this::slots);
   }
 
   // Campos que só valem juntos. `true` se vieram todos, `false` se nenhum
-  public boolean allOrNone(String... fields) {
+  private boolean allOrNone(String... fields) {
     List<String> sent = Arrays.stream(fields).filter(this::isSent).toList();
     if (sent.isEmpty()) {
       return false;
@@ -82,6 +111,22 @@ public final class Request {
     }
 
     return value;
+  }
+
+  private LocalDate calendarDate(String field, String value) {
+    try {
+      return LocalDate.parse(value);
+    } catch (DateTimeParseException e) {
+      throw invalid(field, "data inexistente no calendario, \"" + value + "\"", e);
+    }
+  }
+
+  private TimeWindow window(LocalDate date, LocalTime start, LocalTime end) {
+    try {
+      return new TimeWindow(date, start, end);
+    } catch (IllegalArgumentException e) {
+      throw invalid(Fields.END_TIME, e.getMessage(), e);
+    }
   }
 
   private JsonElement mustExist(String field) {
@@ -117,6 +162,12 @@ public final class Request {
     return element.getAsString();
   }
 
+  private List<String> requiredList(String field, Pattern itemFormat) {
+    List<String> items = asStrings(field, mustExist(field));
+    items.forEach(item -> checked(field, item, itemFormat));
+    return items;
+  }
+
   private List<String> asStrings(String field, JsonElement element) {
     if (!element.isJsonArray()) {
       throw invalid(field, "esperado array de strings, veio " + element);
@@ -133,9 +184,41 @@ public final class Request {
     return List.copyOf(values);
   }
 
+  private Optional<List<String>> listChange(String field, Pattern itemFormat) {
+    if (!json.has(field)) {
+      return Optional.empty();
+    }
+
+    List<String> items = requiredList(field, itemFormat);
+    return items.isEmpty() ? Optional.empty() : Optional.of(items);
+  }
+
+  private List<String> withoutClearMark(List<String> resources) {
+    if (resources.contains(Fields.CLEAR_RESOURCES)) {
+      throw invalid(Fields.RESOURCES, "\"0\" so vale sozinho, no update_room, para apagar todos: " + resources);
+    }
+
+    return resources;
+  }
+
+  private List<Slot> slots(List<String> wireNames) {
+    if (wireNames.isEmpty()) {
+      throw invalid(Fields.SLOTS, "a sala precisa funcionar em pelo menos um horario");
+    }
+    if (Set.copyOf(wireNames).size() != wireNames.size()) {
+      throw invalid(Fields.SLOTS, "horario repetido em " + wireNames);
+    }
+
+    return wireNames.stream().map(wireName -> Slot.fromWire(wireName).orElseThrow()).toList();
+  }
+
   // `badRequest` é o que vai para rede, o resto é log
   private ProtocolException invalid(String field, String reason) {
+    return invalid(field, reason, null);
+  }
+
+  private ProtocolException invalid(String field, String reason, Throwable cause) {
     return ProtocolException.badRequest(badRequest,
-        Codec.diagnosis("campo '" + field + "': " + reason, json.toString()));
+        Codec.diagnosis("campo '" + field + "': " + reason, json.toString()), cause);
   }
 }

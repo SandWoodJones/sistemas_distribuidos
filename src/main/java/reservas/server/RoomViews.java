@@ -3,6 +3,7 @@ package reservas.server;
 import com.google.gson.JsonObject;
 
 import reservas.protocol.Fields;
+import reservas.protocol.Slot;
 import reservas.protocol.StringArrays;
 
 final class RoomViews {
@@ -17,6 +18,7 @@ final class RoomViews {
     view.addProperty(Fields.LOCATION, room.location());
     view.add(Fields.RESOURCES, StringArrays.toJson(room.resources()));
     view.addProperty(Fields.ROOM_STATUS, room.status().wireName());
+    view.add(Fields.SLOTS, StringArrays.toJson(room.slots().stream().map(Slot::wireName).toList()));
     return view;
   }
 }

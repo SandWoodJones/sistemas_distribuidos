@@ -1,6 +1,7 @@
 package reservas.client;
 
 import java.io.IOException;
+import java.util.List;
 import java.util.Optional;
 
 import com.google.gson.JsonObject;
@@ -109,6 +110,7 @@ public final class Session implements AutoCloseable {
   public JsonObject createRoom(RoomFields room) throws IOException {
     JsonObject request = authenticated(Op.CREATE_ROOM);
     addRoom(request, room);
+    request.add(Fields.RESOURCES, StringArrays.toJson(room.resources()));
 
     return client.ask(request);
   }
@@ -130,6 +132,7 @@ public final class Session implements AutoCloseable {
   public JsonObject updateRoom(String roomId, RoomFields room, String roomStatus) throws IOException {
     JsonObject request = onRoom(Op.UPDATE_ROOM, roomId);
     addRoom(request, room);
+    request.add(Fields.RESOURCES, StringArrays.toJson(clearedIfEmpty(room.resources())));
     request.addProperty(Fields.ROOM_STATUS, roomStatus);
 
     return client.ask(request);
@@ -179,7 +182,11 @@ public final class Session implements AutoCloseable {
     request.addProperty(Fields.NAME, room.name());
     request.addProperty(Fields.CAPACITY, room.capacity());
     request.addProperty(Fields.LOCATION, room.location());
-    request.add(Fields.RESOURCES, StringArrays.toJson(room.resources()));
+    request.add(Fields.SLOTS, StringArrays.toJson(room.slots()));
+  }
+
+  private static List<String> clearedIfEmpty(List<String> resources) {
+    return resources.isEmpty() ? List.of(Fields.CLEAR_RESOURCES) : resources;
   }
 
   private static void addUnlessBlank(JsonObject request, String field, String value) {

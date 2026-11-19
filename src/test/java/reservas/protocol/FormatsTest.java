@@ -98,15 +98,32 @@ class FormatsTest {
   }
 
   @Test
-  void date() {
-    accepts(Formats.DATE, "2026-09-15", "9999-99-99");
-    rejects(Formats.DATE, "2026-9-15", "15/09/2026", "2026-09-15 14:00", "");
+  void resource() {
+    accepts(Formats.RESOURCE, "projetor", "Quadro branco", "TV-55", "0");
+    rejects(Formats.RESOURCE, "projetor/tv", "Televisão", "", "a".repeat(31));
   }
 
   @Test
-  void time() {
-    accepts(Formats.TIME, "14:00", "00:00", "23:59");
-    rejects(Formats.TIME, "24:00", "14:60", "2:00", "14:0", "1400", "");
+  void slot() {
+    accepts(Formats.SLOT, "2M1", "4T3", "7M6", "6N5");
+    rejects(Formats.SLOT, "1M1", "8M1", "2N6", "2M7", "2m1", "2M", "M1", "2M10", "");
+  }
+
+  @Test
+  void date() {
+    accepts(Formats.DATE, "2026-09-15", "2026-01-01", "2026-12-31", "2026-02-30");
+    rejects(Formats.DATE, "2026-13-01", "2026-00-10", "2026-09-00", "2026-09-32", "2026-9-15", "15/09/2026",
+        "2026-09-15 14:00", "");
+  }
+
+  @Test
+  void classBoundaries() {
+    accepts(Formats.START_TIME, "07:30", "08:20", "09:10", "10:20", "11:10", "12:00", "13:00", "13:50", "14:40",
+        "15:50", "16:40", "17:30", "18:40", "19:30", "20:20", "21:20", "22:10");
+    rejects(Formats.START_TIME, "08:00", "10:00", "23:00", "7:30", "07:30:99", "");
+    accepts(Formats.END_TIME, "08:20", "09:10", "10:00", "11:10", "12:00", "12:50", "13:50", "14:40", "15:30", "16:40",
+        "17:30", "18:20", "19:30", "20:20", "21:10", "22:10", "23:00");
+    rejects(Formats.END_TIME, "07:30", "10:20", "13:00", "18:40", "");
   }
 
   @Test

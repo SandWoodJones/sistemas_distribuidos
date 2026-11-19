@@ -12,6 +12,7 @@ import reservas.protocol.Codec;
 import reservas.protocol.ProtocolException;
 import reservas.protocol.Role;
 import reservas.protocol.RoomStatus;
+import reservas.protocol.Slot;
 import reservas.protocol.StringArrays;
 
 // Persistência, toda operação que pode conflitar decide o conflito aqui e devolve `Optional` vazio; quem chama traduz para 409.
@@ -161,14 +162,16 @@ public final class SqliteStore implements AutoCloseable {
   }
 
   // Vazio se `name` já está cadastrado
-  public synchronized Optional<Room> createRoom(String name, int capacity, String location, List<String> resources) {
+  public synchronized Optional<Room> createRoom(String name, int capacity, String location, List<String> resources,
+      List<Slot> slots) {
     if (findRoomByName(name).isPresent()) {
       return Optional.empty();
     }
 
-    long id = database.insert("INSERT INTO rooms (name, capacity, location, resources, status) VALUES (?, ?, ?, ?, ?)",
-        name, capacity, location, toJson(resources), RoomStatus.ACTIVE.wireName());
-    return Optional.of(new Room(id, name, capacity, location, resources, RoomStatus.ACTIVE));
+    long id = database.insert(
+        "INSERT INTO rooms (name, capacity, location, resources, status, slots) VALUES (?, ?, ?, ?, ?, ?)",
+        name, capacity, location, toJson(resources), RoomStatus.ACTIVE.wireName(), slotsToJson(slots));
+    return Optional.of(new Room(id, name, capacity, location, resources, RoomStatus.ACTIVE, slots));
   }
 
   // `false` se o novo `name` já pertence a outra sala
@@ -181,9 +184,10 @@ public final class SqliteStore implements AutoCloseable {
       return false;
     }
 
-    database.update("UPDATE rooms SET name = ?, capacity = ?, location = ?, resources = ?, status = ? WHERE id = ?",
+    database.update(
+        "UPDATE rooms SET name = ?, capacity = ?, location = ?, resources = ?, status = ?, slots = ? WHERE id = ?",
         updated.name(), updated.capacity(), updated.location(), toJson(updated.resources()),
-        updated.status().wireName(), id);
+        updated.status().wireName(), slotsToJson(updated.slots()), id);
     return true;
   }
 
@@ -210,11 +214,21 @@ public final class SqliteStore implements AutoCloseable {
     String status = row.getString("status");
     return new Room(row.getLong("id"), row.getString("name"), row.getInt("capacity"), row.getString("location"),
         fromJson(row.getString("resources")),
-        RoomStatus.fromWire(status).orElseThrow(() -> corrupt("rooms.status", status)));
+        RoomStatus.fromWire(status).orElseThrow(() -> corrupt("rooms.status", status)),
+        slotsFromJson(row.getString("slots")));
+  }
+
+  private static String slotsToJson(List<Slot> slots) {
+    return toJson(slots.stream().map(Slot::wireName).toList());
   }
 
   private static String toJson(List<String> values) {
     return StringArrays.toJson(values).toString();
+  }
+
+  private static List<Slot> slotsFromJson(String text) {
+    return fromJson(text).stream()
+        .map(wireName -> Slot.fromWire(wireName).orElseThrow(() -> corrupt("rooms.slots", wireName))).toList();
   }
 
   private static List<String> fromJson(String text) {

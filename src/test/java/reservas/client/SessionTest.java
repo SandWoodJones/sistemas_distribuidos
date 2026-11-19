@@ -127,7 +127,7 @@ class SessionTest {
     Bootstrap.seedAdmin(server.store(), T0);
     session.login(Bootstrap.ADMIN_EMAIL, Bootstrap.ADMIN_PASSWORD);
 
-    RoomFields b12 = new RoomFields("Sala B12", "12", "Bloco B", List.of("projetor", "tv"));
+    RoomFields b12 = new RoomFields("Sala B12", "12", "Bloco B", List.of("projetor", "tv"), List.of("3T1", "3T2"));
     JsonObject created = session.createRoom(b12);
     assertStatus("201", created);
     String id = created.get(Fields.ROOM_ID).getAsString();
@@ -136,11 +136,11 @@ class SessionTest {
     assertEquals("1", all.get(Fields.COUNT).getAsString());
     assertFalse(all.getAsJsonArray(Fields.ROOMS).get(0).getAsJsonObject().has(Fields.AVAILABLE));
     assertTrue(traffic.stream().noneMatch(line -> line.contains("\"date\"")), traffic.toString());
-    assertEquals("0", session.listRooms("2026-09-15", "14:00", "16:00", "13").get(Fields.COUNT).getAsString());
+    assertEquals("0", session.listRooms("2026-09-15", "13:00", "14:40", "13").get(Fields.COUNT).getAsString());
 
     assertEquals(b12, RoomFields.from(session.readRoom(id)));
 
-    RoomFields renamed = new RoomFields("Sala B13", "16", "Bloco B", List.of());
+    RoomFields renamed = new RoomFields("Sala B13", "16", "Bloco B", List.of(), List.of("4T3"));
     assertStatus("200", session.updateRoom(id, renamed, "inactive"));
     JsonObject read = session.readRoom(id);
     assertEquals(renamed, RoomFields.from(read));

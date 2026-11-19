@@ -26,6 +26,7 @@ public final class Fields {
   public static final String LOCATION = "location";
   public static final String RESOURCES = "resources";
   public static final String ROOM_STATUS = "room_status";
+  public static final String SLOTS = "slots";
 
   // Reservas
   public static final String RESERVATION_ID = "reservation_id";
@@ -48,4 +49,5 @@ public final class Fields {
 
   public static final String SCOPE_MINE = "mine";
   public static final String SCOPE_ALL = "all";
+  public static final String CLEAR_RESOURCES = "0";
 }

@@ -1,6 +1,10 @@
 package reservas.protocol;
 
+import java.time.LocalTime;
+import java.util.Arrays;
+import java.util.function.Function;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 public final class Formats {
   private Formats() {
@@ -14,7 +18,8 @@ public final class Formats {
   // Usuários
   public static final Pattern USER = Pattern.compile("^[a-z]{1,30}$");
   public static final Pattern PASSWORD = Pattern.compile("^[A-Za-z0-9]{1,20}$");
-  public static final Pattern EMAIL = Pattern.compile("^(?=.{1,100}$)[a-z0-9._-]+@[a-z0-9-]+(\\.[a-z0-9-]+)*\\.[a-z]{2,}$");
+  public static final Pattern EMAIL = Pattern
+      .compile("^(?=.{1,100}$)[a-z0-9._-]+@[a-z0-9-]+(\\.[a-z0-9-]+)*\\.[a-z]{2,}$");
   public static final Pattern ROLE = Pattern.compile("^(user|admin)$");
 
   // IDs (`room_id`, `reservation_id`, `count`)
@@ -27,10 +32,13 @@ public final class Formats {
   public static final Pattern CAPACITY = Pattern.compile("^[1-9][0-9]{0,3}$");
   public static final Pattern LOCATION = Pattern.compile("^[A-Za-z0-9 ,.-]{1,60}$");
   public static final Pattern ROOM_STATUS = Pattern.compile("^(active|inactive)$");
+  public static final Pattern RESOURCE = Pattern.compile("^[A-Za-z0-9 -]{1,30}$");
+  public static final Pattern SLOT = Pattern.compile("^[2-7](M[1-6]|T[1-6]|N[1-5])$");
 
   // Reservas
-  public static final Pattern DATE = Pattern.compile("^[0-9]{4}-[0-9]{2}-[0-9]{2}$");
-  public static final Pattern TIME = Pattern.compile("^([01][0-9]|2[0-3]):[0-5][0-9]$");
+  public static final Pattern DATE = Pattern.compile("^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$");
+  public static final Pattern START_TIME = anyOf(ClassPeriod::start);
+  public static final Pattern END_TIME = anyOf(ClassPeriod::end);
   public static final Pattern TOPIC = Pattern.compile("^[A-Za-z0-9 ,.-]{1,60}$");
   public static final Pattern AVAILABLE = Pattern.compile("^(true|false)$");
   public static final Pattern CREATED_AT = Pattern
@@ -41,5 +49,10 @@ public final class Formats {
 
   public static boolean matches(Pattern format, String value) {
     return value != null && format.matcher(value).matches();
+  }
+
+  private static Pattern anyOf(Function<ClassPeriod, LocalTime> boundary) {
+    return Pattern.compile(Arrays.stream(ClassPeriod.values()).map(boundary).map(LocalTime::toString)
+        .collect(Collectors.joining("|", "^(", ")$")));
   }
 }
