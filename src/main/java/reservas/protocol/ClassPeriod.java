@@ -1,6 +1,8 @@
 package reservas.protocol;
 
 import java.time.LocalTime;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Optional;
 
 // Tabela de aulas da UTFPR.
@@ -42,6 +44,10 @@ public enum ClassPeriod implements WireValue {
 
   public LocalTime end() {
     return end;
+  }
+
+  public static List<ClassPeriod> between(LocalTime start, LocalTime end) {
+    return Arrays.stream(values()).filter(period -> !period.start.isBefore(start) && !period.end.isAfter(end)).toList();
   }
 
   public static Optional<ClassPeriod> fromWire(String wireName) {

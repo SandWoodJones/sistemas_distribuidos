@@ -26,7 +26,10 @@ public final class Fields {
   public static final String LOCATION = "location";
   public static final String RESOURCES = "resources";
   public static final String ROOM_STATUS = "room_status";
+  public static final String SLOT = "slot";
   public static final String SLOTS = "slots";
+  public static final String SLOT_STATUS = "slot_status";
+  public static final String AGENDA = "agenda";
 
   // Reservas
   public static final String RESERVATION_ID = "reservation_id";

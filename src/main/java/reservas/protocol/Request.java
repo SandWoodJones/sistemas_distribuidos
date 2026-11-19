@@ -50,9 +50,13 @@ public final class Request {
     return json.has(field) ? Optional.of(required(field, format)) : Optional.empty();
   }
 
+  public Optional<LocalDate> dateFilter() {
+    return filter(Fields.DATE, Formats.DATE).map(value -> calendarDate(Fields.DATE, value));
+  }
+
   // `date`, `start_time` e `end_time` vêm todos ou nenhum
   public Optional<TimeWindow> windowFilter() {
-    Optional<LocalDate> date = filter(Fields.DATE, Formats.DATE).map(value -> calendarDate(Fields.DATE, value));
+    Optional<LocalDate> date = dateFilter();
     Optional<LocalTime> start = filter(Fields.START_TIME, Formats.START_TIME).map(LocalTime::parse);
     Optional<LocalTime> end = filter(Fields.END_TIME, Formats.END_TIME).map(LocalTime::parse);
 

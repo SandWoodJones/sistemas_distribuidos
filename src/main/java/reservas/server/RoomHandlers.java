@@ -1,6 +1,8 @@
 package reservas.server;
 
+import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 
 import com.google.gson.JsonObject;
 
@@ -14,6 +16,7 @@ import reservas.protocol.Responses;
 import reservas.protocol.RoomStatus;
 import reservas.protocol.Slot;
 import reservas.protocol.Status;
+import reservas.protocol.TimeWindow;
 
 public final class RoomHandlers {
   static final String ROOM_BAD_REQUEST = "Dados da sala em formato invalido";
@@ -53,13 +56,15 @@ public final class RoomHandlers {
 
   static JsonObject listRooms(JsonObject json, ServerContext context) {
     Request request = new Request(json, FILTERS_BAD_REQUEST);
-    boolean withSlot = request.windowFilter().isPresent();
+    Optional<TimeWindow> window = request.windowFilter();
     int minCapacity = request.filter(Fields.MIN_CAPACITY, Formats.CAPACITY).map(Integer::parseInt)
         .orElse(ANY_CAPACITY);
 
     Caller.authenticate(request, context);
     List<JsonObject> rooms = context.store().listRooms(minCapacity).stream()
-        .map(room -> withSlot ? withAvailability(room) : RoomViews.details(room)).toList();
+        .map(room -> window.map(asked -> RoomViews.withAvailability(room, asked))
+            .orElseGet(() -> RoomViews.details(room)))
+        .toList();
 
     return Responses.listing(Op.LIST_ROOMS, Fields.ROOMS, rooms);
   }
@@ -67,11 +72,13 @@ public final class RoomHandlers {
   static JsonObject readRoom(JsonObject json, ServerContext context) {
     Request request = new Request(json, Messages.DATA_BAD_REQUEST);
     long id = roomId(request);
+    Optional<LocalDate> date = request.dateFilter();
 
     Caller.authenticate(request, context);
     Room room = findRoom(context.store(), id);
 
-    return Responses.found(Op.READ_ROOM, RoomViews.details(room));
+    JsonObject view = date.map(day -> RoomViews.withAgenda(room, day)).orElseGet(() -> RoomViews.details(room));
+    return Responses.found(Op.READ_ROOM, view);
   }
 
   static JsonObject updateRoom(JsonObject json, ServerContext context) {
@@ -101,12 +108,6 @@ public final class RoomHandlers {
     findRoom(store, id);
     store.deleteRoom(id);
     return Responses.of(Op.DELETE_ROOM, Status.OK, "Sala removida com sucesso");
-  }
-
-  private static JsonObject withAvailability(Room room) {
-    JsonObject view = RoomViews.details(room);
-    view.addProperty(Fields.AVAILABLE, Boolean.toString(room.status() == RoomStatus.ACTIVE));
-    return view;
   }
 
   private static RoomChanges changes(Request request) {

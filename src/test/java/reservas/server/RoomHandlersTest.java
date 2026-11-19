@@ -170,6 +170,27 @@ class RoomHandlersTest {
   }
 
   @Test
+  void listRoomsMarksARoomAvailableOnlyInsideItsSlots() {
+    String[][] cases = {
+        { "true", ",'date':'2026-09-15','start_time':'13:00','end_time':'14:40'" },
+        { "true", ",'date':'2026-09-15','start_time':'13:50','end_time':'14:40'" },
+        { "false", ",'date':'2026-09-15','start_time':'13:00','end_time':'15:30'" },
+        { "false", ",'date':'2026-09-16','start_time':'13:00','end_time':'14:40'" },
+        { "false", ",'date':'2026-09-13','start_time':'13:00','end_time':'14:40'" } };
+
+    for (String[] c : cases) {
+      JsonObject room = handle("list_rooms", COMMON, c[1]).getAsJsonArray(Fields.ROOMS).get(0).getAsJsonObject();
+      assertEquals(c[0], room.get(Fields.AVAILABLE).getAsString(), c[1]);
+    }
+
+    store.updateRoom(b12.id(), new RoomChanges(null, null, null, null, null, List.of(slot("2M3"), slot("2M4"))));
+    JsonObject accrosTheBreak = handle("list_rooms", COMMON,
+        ",'date':'2026-09-14','start_time':'09:10','end_time':'11:10'").getAsJsonArray(Fields.ROOMS).get(0)
+        .getAsJsonObject();
+    assertEquals("true", accrosTheBreak.get(Fields.AVAILABLE).getAsString());
+  }
+
+  @Test
   void listRoomsRejectsAPartialSlotABlankFilterAndAnImpossibleSlot() {
     String[][] cases = {
         { "start_time", ",'date':'2026-09-15'" },
@@ -200,6 +221,38 @@ class RoomHandlersTest {
     assertEquals("Sala B12", response.get(Fields.NAME).getAsString());
     assertEquals(TestJson.json("['projetor','tv']"), response.get(Fields.RESOURCES).toString());
     assertEquals(TestJson.json("['3T1','3T2']"), response.get(Fields.SLOTS).toString());
+  }
+
+  @Test
+  void readRoomWithADateAnswersThatDaysAgenda() {
+    store.updateRoom(b12.id(),
+        new RoomChanges(null, null, null, null, null, List.of(slot("3T2"), slot("5N1"), slot("3T1"))));
+    String tuesday = ",'room_id':'" + b12.id() + "','date':'2026-09-15'";
+
+    JsonObject response = handle("read_room", COMMON, tuesday);
+    assertKeys(response, Fields.OP, Fields.STATUS, Fields.MESSAGE, Fields.ROOM_ID, Fields.NAME, Fields.CAPACITY,
+        Fields.LOCATION, Fields.RESOURCES, Fields.ROOM_STATUS, Fields.SLOTS, Fields.DATE, Fields.AGENDA);
+    assertEquals("2026-09-15", response.get(Fields.DATE).getAsString());
+    assertEquals(TestJson.json("[{'slot':'3T1','start_time':'13:00','end_time':'13:50','slot_status':'livre'},"
+        + "{'slot':'3T2','start_time':'13:50','end_time':'14:40','slot_status':'livre'}]"),
+        response.get(Fields.AGENDA).toString());
+
+    JsonObject wednesday = handle("read_room", COMMON, ",'room_id':'" + b12.id() + "','date':'2026-09-16'");
+    assertEquals(0, wednesday.getAsJsonArray(Fields.AGENDA).size());
+
+    store.updateRoom(b12.id(), new RoomChanges(null, null, null, null, RoomStatus.INACTIVE, null));
+    JsonArray inactive = handle("read_room", COMMON, tuesday).getAsJsonArray(Fields.AGENDA);
+    assertEquals("indisponivel", inactive.get(0).getAsJsonObject().get(Fields.SLOT_STATUS).getAsString());
+  }
+
+  @Test
+  void readRoomRejectsADateOutsideTheFormat() {
+    String id = ",'room_id':'" + b12.id() + "'";
+    for (String date : new String[] { "''", "null", "'15/09/2026'", "'2026-02-30'" }) {
+      assertResponse("read_room_response", "400", "Dados em formato invalido",
+          handle("read_room", COMMON, id + ",'date':" + date));
+      assertTrue(lastDiagnosis().contains("campo 'date'"), lastDiagnosis());
+    }
   }
 
   @Test
