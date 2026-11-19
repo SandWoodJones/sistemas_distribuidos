@@ -62,7 +62,7 @@ final class Connection implements Runnable {
   }
 
   private void serve(Socket open) throws IOException {
-    LineReader lines = new LineReader(new BufferedInputStream(open.getInputStream()));
+    LineReader lines = LineReader.requests(new BufferedInputStream(open.getInputStream()));
     Writer out = new OutputStreamWriter(open.getOutputStream(), StandardCharsets.UTF_8);
 
     boolean connected = true;
@@ -97,19 +97,10 @@ final class Connection implements Runnable {
   }
 
   private static void send(Writer out, JsonObject response) throws IOException {
-    String line = encode(response);
+    String line = Codec.encode(response);
     log.info("enviado {}", line.strip());
     out.write(line);
     out.flush();
-  }
-
-  private static String encode(JsonObject response) {
-    try {
-      return Codec.encode(response);
-    } catch (ProtocolException e) {
-      log.error(e.getMessage(), e);
-      return Codec.encode(Responses.error(Status.INTERNAL_SERVER_ERROR, Messages.INTERNAL_ERROR));
-    }
   }
 
   private static JsonObject report(ProtocolException failure) {

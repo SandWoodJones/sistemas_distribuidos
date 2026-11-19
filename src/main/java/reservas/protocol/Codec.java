@@ -14,8 +14,8 @@ import com.google.gson.stream.JsonToken;
 
 // Converte uma mensagem entre JSON e a linha única que trafega no socket
 public final class Codec {
-  // Tamanho máximo de uma mensagem, já incluindo o `\n` final
-  public static final int MAX_MESSAGE_BYTES = 8192;
+  // Tamanho máximo de uma requisição, já incluindo o `\n` final
+  public static final int MAX_REQUEST_BYTES = 8192;
   // Trecho da linha bruta que entra no diagnóstico
   private static final int RAW_SNIPPET_LIMIT = 200;
 
@@ -24,15 +24,7 @@ public final class Codec {
 
   // Serializa em uma única linha terminada com `\n`
   public static String encode(JsonObject message) {
-    String line = message + "\n";
-
-    if (sizeInBytes(line) > MAX_MESSAGE_BYTES) {
-      throw ProtocolException
-          .internal("resposta gerada com " + sizeInBytes(line) + " bytes, limite " + MAX_MESSAGE_BYTES
-              + "; inicio=" + snippet(line));
-    }
-
-    return line;
+    return message + "\n";
   }
 
   // Interpreta uma linha recebida. O `\n` final pode estar presente ou já ter

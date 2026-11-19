@@ -46,8 +46,8 @@ class SessionTest {
   @Test
   void keepsTheTokenAndRoleOnlyAfterAnAcceptedLogin() throws IOException {
     JsonObject anonymous = session.readUser();
-    assertStatus("401", anonymous);
-    assertEquals("Token invalido ou expirado", anonymous.get(Fields.MESSAGE).getAsString());
+    assertStatus("400", anonymous);
+    assertEquals("Token em formato invalido", anonymous.get(Fields.MESSAGE).getAsString());
 
     assertStatus("201", session.register(EMAIL, "joao", "senha123"));
     assertStatus("401", session.login(EMAIL, "errada"));

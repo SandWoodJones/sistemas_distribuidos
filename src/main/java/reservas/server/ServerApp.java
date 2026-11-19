@@ -83,6 +83,12 @@ public final class ServerApp {
     Bootstrap.seedAdmin(store, now)
         .ifPresent(admin -> log.info("administrador inicial criado: user {}, email {}, senha {}", admin.name(),
             admin.email(), admin.password()));
+
+    if (store.countAdmins() == 0) {
+      log.warn(
+          "administrador inicial nao criado: ja existe conta comum com user {} ou email {}; o servidor esta sem administrador ate que {} seja apagado",
+          Bootstrap.ADMIN_USER, Bootstrap.ADMIN_EMAIL, DATABASE_FILE);
+    }
   }
 
   private static int port(String[] args) {

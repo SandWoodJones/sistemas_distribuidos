@@ -48,7 +48,7 @@ class InstalledHandlersTest {
         { "logout", "{'op':'logout'," + bad + "}", "Token em formato invalido" },
         { "read_user", "{'op':'read_user'," + bad + "}", "Token em formato invalido" },
         { "update_user", "{'op':'update_user'," + bad + ",'user':'joao'}", "Dados em formato invalido" },
-        { "delete_user", "{'op':'delete_user'," + bad + ",'password':'senha123'}", "Senha em formato invalido" },
+        { "delete_user", "{'op':'delete_user'," + bad + ",'password':'senha123'}", "Token em formato invalido" },
         { "admin_list_users", "{'op':'admin_list_users'," + bad + "}", "Token em formato invalido" },
         { "admin_read_user", "{'op':'admin_read_user'," + bad + ",'target_user':'joao'}", "Dados em formato invalido" },
         { "admin_update_user", "{'op':'admin_update_user'," + bad + ",'target_user':'joao','role':'admin'}",

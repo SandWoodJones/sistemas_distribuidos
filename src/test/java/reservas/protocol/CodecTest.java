@@ -34,12 +34,4 @@ class CodecTest {
 
     assertNotNull(assertThrows(ProtocolException.class, () -> Codec.decode("{op:\"login\"}")).getCause());
   }
-
-  @Test
-  void refusesToEncodeAnOversizedResponse() {
-    JsonObject huge = new JsonObject();
-    huge.addProperty(Fields.MESSAGE, "ç".repeat(4100));
-
-    assertFails(Status.INTERNAL_SERVER_ERROR, "Erro interno do servidor", () -> Codec.encode(huge));
-  }
 }

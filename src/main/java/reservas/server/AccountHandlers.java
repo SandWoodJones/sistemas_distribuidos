@@ -7,6 +7,7 @@ import com.google.gson.JsonObject;
 
 import reservas.protocol.Fields;
 import reservas.protocol.Formats;
+import reservas.protocol.Messages;
 import reservas.protocol.Op;
 import reservas.protocol.ProtocolException;
 import reservas.protocol.Request;
@@ -14,8 +15,6 @@ import reservas.protocol.Responses;
 import reservas.protocol.Status;
 
 public final class AccountHandlers {
-  static final String READ_USER_BAD_REQUEST = "Token em formato invalido";
-  static final String UPDATE_USER_BAD_REQUEST = "Dados em formato invalido";
   static final String DELETE_USER_BAD_REQUEST = "Senha em formato invalido";
 
   private static final DateTimeFormatter CREATED_AT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
@@ -30,7 +29,7 @@ public final class AccountHandlers {
   }
 
   static JsonObject readUser(JsonObject json, ServerContext context) {
-    Request request = new Request(json, READ_USER_BAD_REQUEST);
+    Request request = new Request(json, Messages.TOKEN_BAD_REQUEST);
 
     User user = Caller.authenticate(request, context).user();
 
@@ -38,7 +37,7 @@ public final class AccountHandlers {
   }
 
   static JsonObject updateUser(JsonObject json, ServerContext context) {
-    Request request = new Request(json, UPDATE_USER_BAD_REQUEST);
+    Request request = new Request(json, Messages.DATA_BAD_REQUEST);
     request.mustBeAbsent(Fields.EMAIL);
     String name = request.optional(Fields.USER, Formats.USER).orElse(null);
     String password = request.optional(Fields.PASSWORD, Formats.PASSWORD).orElse(null);
@@ -53,7 +52,7 @@ public final class AccountHandlers {
     Request request = new Request(json, DELETE_USER_BAD_REQUEST);
     String password = request.required(Fields.PASSWORD, Formats.PASSWORD);
 
-    User user = Caller.authenticate(request, context).user();
+    User user = Caller.authenticate(new Request(json, Messages.TOKEN_BAD_REQUEST), context).user();
     confirmPassword(user, password);
     if (!context.store().deleteUserUnlessLastAdmin(user.id())) {
       throw Admin.lastAdmin(user);

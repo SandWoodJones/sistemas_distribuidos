@@ -16,19 +16,26 @@ class LineReaderTest {
   private static final String LOGIN = "{\"op\":\"login\"}";
 
   private static LineReader reader(String text) {
-    return new LineReader(new ByteArrayInputStream(text.getBytes(StandardCharsets.UTF_8)));
+    return LineReader.requests(new ByteArrayInputStream(text.getBytes(StandardCharsets.UTF_8)));
   }
 
   @Test
   void limitIs8192BytesIncludingTheNewline() throws IOException {
-    String atLimit = "a".repeat(Codec.MAX_MESSAGE_BYTES - 1) + "\n";
+    String atLimit = "a".repeat(Codec.MAX_REQUEST_BYTES - 1) + "\n";
     assertEquals(Optional.of(atLimit), reader(atLimit).readLine());
 
     assertFails(Status.BAD_REQUEST, "Mensagem excede o tamanho maximo",
-        () -> reader("a".repeat(Codec.MAX_MESSAGE_BYTES) + "\n").readLine());
+        () -> reader("a".repeat(Codec.MAX_REQUEST_BYTES) + "\n").readLine());
 
     assertEquals(Optional.of("é".repeat(4095) + "\n"), reader("é".repeat(4095) + "\n").readLine());
     assertThrows(ProtocolException.class, () -> reader("é".repeat(4096) + "\n").readLine());
+  }
+
+  @Test
+  void responsesHaveNoLimit() throws IOException {
+    String listing = "a".repeat(3 * Codec.MAX_REQUEST_BYTES) + "\n";
+    LineReader lines = LineReader.responses(new ByteArrayInputStream(listing.getBytes(StandardCharsets.UTF_8)));
+    assertEquals(Optional.of(listing), lines.readLine());
   }
 
   @Test

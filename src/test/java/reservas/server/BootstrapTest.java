@@ -27,4 +27,14 @@ class BootstrapTest {
     assertStatus("200", response);
     assertEquals("admin", response.get(Fields.ROLE).getAsString());
   }
+
+  @Test
+  void leavesAnAccountInTheWayAlone() {
+    SqliteStore store = SqliteStore.openInMemory();
+    store.createUser("admin", "outro@email.com", "senha123", Role.USER, T0).orElseThrow();
+
+    assertTrue(Bootstrap.seedAdmin(store, T0).isEmpty());
+    assertEquals(0, store.countAdmins());
+    assertEquals(Role.USER, store.findUser("admin").orElseThrow().role());
+  }
 }

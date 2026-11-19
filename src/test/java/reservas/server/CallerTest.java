@@ -52,12 +52,9 @@ class CallerTest {
   }
 
   @Test
-  void rejectsATokenThatOpensNoSession() {
-    assertRejected(Status.UNAUTHORIZED, UNAUTHORIZED, "ausente ou vazio", "{'op':'read_user'}", T0);
-    assertRejected(Status.UNAUTHORIZED, UNAUTHORIZED, "ausente ou vazio", withToken(""), T0);
-
-    for (String json : new String[] { withToken("abc"), withToken("A".repeat(64)), withToken("g".repeat(64)),
-        "{'op':'read_user','token':null}" }) {
+  void anAbsentOrMalformedTokenIs400AndADeadOneIs401() {
+    for (String json : new String[] { "{'op':'read_user'}", withToken(""), withToken("abc"), withToken("A".repeat(64)),
+        withToken("g".repeat(64)), "{'op':'read_user','token':null}" }) {
       assertRejected(Status.BAD_REQUEST, BAD_REQUEST, "'token'", json, T0);
     }
 

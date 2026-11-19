@@ -6,6 +6,7 @@ import com.google.gson.JsonObject;
 
 import reservas.protocol.Fields;
 import reservas.protocol.Formats;
+import reservas.protocol.Messages;
 import reservas.protocol.Op;
 import reservas.protocol.ProtocolException;
 import reservas.protocol.Request;
@@ -14,8 +15,6 @@ import reservas.protocol.Role;
 import reservas.protocol.Status;
 
 public final class AdminHandlers {
-  static final String LIST_USERS_BAD_REQUEST = "Token em formato invalido";
-  static final String TARGET_BAD_REQUEST = "Dados em formato invalido";
   static final String USER_NOT_FOUND = "Usuario nao encontrado";
 
   private AdminHandlers() {
@@ -29,7 +28,7 @@ public final class AdminHandlers {
   }
 
   static JsonObject listUsers(JsonObject json, ServerContext context) {
-    Request request = new Request(json, LIST_USERS_BAD_REQUEST);
+    Request request = new Request(json, Messages.TOKEN_BAD_REQUEST);
 
     Caller.authenticate(request, context).requireAdmin();
     List<User> users = context.store().listUsers();
@@ -38,7 +37,7 @@ public final class AdminHandlers {
   }
 
   static JsonObject readUser(JsonObject json, ServerContext context) {
-    Request request = new Request(json, TARGET_BAD_REQUEST);
+    Request request = new Request(json, Messages.DATA_BAD_REQUEST);
     String target = request.required(Fields.TARGET_USER, Formats.USER);
 
     Caller.authenticate(request, context).requireAdmin();
@@ -48,7 +47,7 @@ public final class AdminHandlers {
   }
 
   static JsonObject updateUser(JsonObject json, ServerContext context) {
-    Request request = new Request(json, TARGET_BAD_REQUEST);
+    Request request = new Request(json, Messages.DATA_BAD_REQUEST);
     request.mustBeAbsent(Fields.EMAIL);
     String target = request.required(Fields.TARGET_USER, Formats.USER);
     UserChanges changes = changes(request);
@@ -62,7 +61,7 @@ public final class AdminHandlers {
   }
 
   static JsonObject deleteUser(JsonObject json, ServerContext context) {
-    Request request = new Request(json, TARGET_BAD_REQUEST);
+    Request request = new Request(json, Messages.DATA_BAD_REQUEST);
     String target = request.required(Fields.TARGET_USER, Formats.USER);
 
     Caller.authenticate(request, context).requireAdmin();

@@ -4,6 +4,7 @@ import com.google.gson.JsonObject;
 
 import reservas.protocol.Fields;
 import reservas.protocol.Formats;
+import reservas.protocol.Messages;
 import reservas.protocol.Op;
 import reservas.protocol.ProtocolException;
 import reservas.protocol.Request;
@@ -16,7 +17,6 @@ public final class AuthHandlers {
   static final String REGISTER_BAD_REQUEST = "Dados de cadastro em formato invalido";
   static final String LOGIN_BAD_REQUEST = "Email ou senha em formato invalido";
   static final String LOGIN_UNAUTHORIZED = "Email ou senha incorretos";
-  static final String LOGOUT_BAD_REQUEST = "Token em formato invalido";
 
   private AuthHandlers() {
   }
@@ -61,7 +61,7 @@ public final class AuthHandlers {
   }
 
   static JsonObject logout(JsonObject json, ServerContext context) {
-    Request request = new Request(json, LOGOUT_BAD_REQUEST);
+    Request request = new Request(json, Messages.TOKEN_BAD_REQUEST);
     Caller caller = Caller.authenticate(request, context);
 
     context.store().deleteSession(caller.session().token());

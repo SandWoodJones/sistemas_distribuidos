@@ -6,6 +6,7 @@ import com.google.gson.JsonObject;
 
 import reservas.protocol.Fields;
 import reservas.protocol.Formats;
+import reservas.protocol.Messages;
 import reservas.protocol.Op;
 import reservas.protocol.ProtocolException;
 import reservas.protocol.Request;
@@ -16,7 +17,6 @@ import reservas.protocol.Status;
 public final class RoomHandlers {
   static final String ROOM_BAD_REQUEST = "Dados da sala em formato invalido";
   static final String FILTERS_BAD_REQUEST = "Filtros em formato invalido";
-  static final String ID_BAD_REQUEST = "Dados em formato invalido";
   static final String ROOM_NOT_FOUND = "Sala nao encontrada";
   static final String NAME_IN_USE = "Sala ja cadastrada";
 
@@ -65,7 +65,7 @@ public final class RoomHandlers {
   }
 
   static JsonObject readRoom(JsonObject json, ServerContext context) {
-    Request request = new Request(json, ID_BAD_REQUEST);
+    Request request = new Request(json, Messages.DATA_BAD_REQUEST);
     long id = roomId(request);
 
     Caller.authenticate(request, context);
@@ -92,7 +92,7 @@ public final class RoomHandlers {
 
   // Sala com reservas futuras é 409
   static JsonObject deleteRoom(JsonObject json, ServerContext context) {
-    Request request = new Request(json, ID_BAD_REQUEST);
+    Request request = new Request(json, Messages.DATA_BAD_REQUEST);
     long id = roomId(request);
 
     Caller.authenticate(request, context).requireAdmin();

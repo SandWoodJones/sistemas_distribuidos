@@ -93,7 +93,7 @@ public final class ProtocolClient implements AutoCloseable {
     fresh.setSoTimeout(timeoutMillis);
 
     socket = fresh;
-    lines = new LineReader(new BufferedInputStream(fresh.getInputStream()));
+    lines = LineReader.responses(new BufferedInputStream(fresh.getInputStream()));
     out = new OutputStreamWriter(fresh.getOutputStream(), StandardCharsets.UTF_8);
     used = false;
   }

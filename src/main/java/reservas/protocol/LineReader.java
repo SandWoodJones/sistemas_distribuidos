@@ -8,10 +8,22 @@ import java.util.Optional;
 
 // Uma mensagem por linha, cortada no limite de bytes antes de interpretar
 public final class LineReader {
-  private final InputStream bytes;
+  private static final int NO_LIMIT = Integer.MAX_VALUE;
 
-  public LineReader(InputStream bytes) {
+  private final InputStream bytes;
+  private final int maxBytes;
+
+  private LineReader(InputStream bytes, int maxBytes) {
     this.bytes = bytes;
+    this.maxBytes = maxBytes;
+  }
+
+  public static LineReader requests(InputStream bytes) {
+    return new LineReader(bytes, Codec.MAX_REQUEST_BYTES);
+  }
+
+  public static LineReader responses(InputStream bytes) {
+    return new LineReader(bytes, NO_LIMIT);
   }
 
   // Vazio quando o cliente fecha a conexão
@@ -25,7 +37,7 @@ public final class LineReader {
       }
 
       // Exatamente no limite ainda vale
-      if (line.size() == Codec.MAX_MESSAGE_BYTES) {
+      if (line.size() == maxBytes) {
         throw tooLarge(line, discardToEndOfLine());
       }
     }
@@ -46,10 +58,10 @@ public final class LineReader {
     return line.toString(StandardCharsets.UTF_8);
   }
 
-  private static ProtocolException tooLarge(ByteArrayOutputStream line, long discarded) {
+  private ProtocolException tooLarge(ByteArrayOutputStream line, long discarded) {
     return ProtocolException.badRequest(Messages.MESSAGE_TOO_LARGE,
         Codec.diagnosis(
-            "linha passou de " + Codec.MAX_MESSAGE_BYTES + " bytes, mais " + discarded + " descartados ate o `\\n`",
+            "linha passou de " + maxBytes + " bytes, mais " + discarded + " descartados ate o `\\n`",
             text(line)));
   }
 }

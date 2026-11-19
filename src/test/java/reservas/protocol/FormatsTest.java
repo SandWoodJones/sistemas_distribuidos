@@ -53,10 +53,11 @@ class FormatsTest {
 
   @Test
   void email() {
-    accepts(Formats.EMAIL, "joao.silva@email.com", "admin@utfpr.edu.br", "a@b.co",
+    String local94 = "a".repeat(94);
+    accepts(Formats.EMAIL, local94 + "@b.com", "joao.silva@email.com", "admin@utfpr.edu.br", "a@b.co",
         "joao@alunos.utfpr.edu.br", "joao@meu-provedor.com.br", "joao_silva@email.com",
         "joao-silva@email.com");
-    rejects(Formats.EMAIL, "Joao@email.com", "joao@email", "joao silva@email.com", "@email.com",
+    rejects(Formats.EMAIL, local94 + "a@b.com", "Joao@email.com", "joao@email", "joao silva@email.com", "@email.com",
         "a@b.c", "a@b.c.d.e.f", "");
   }
 
