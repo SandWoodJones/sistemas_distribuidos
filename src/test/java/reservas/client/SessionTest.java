@@ -138,15 +138,16 @@ class SessionTest {
     assertTrue(traffic.stream().noneMatch(line -> line.contains("\"date\"")), traffic.toString());
     assertEquals("0", session.listRooms("2026-09-15", "13:00", "14:40", "13").get(Fields.COUNT).getAsString());
 
-    assertEquals(b12, RoomFields.from(session.readRoom(id)));
+    assertEquals(b12, RoomFields.from(session.readRoom(id, "")));
+    assertEquals(2, session.readRoom(id, "2026-09-15").getAsJsonArray(Fields.AGENDA).size());
 
     RoomFields renamed = new RoomFields("Sala B13", "16", "Bloco B", List.of(), List.of("4T3"));
     assertStatus("200", session.updateRoom(id, renamed, "inactive"));
-    JsonObject read = session.readRoom(id);
+    JsonObject read = session.readRoom(id, "");
     assertEquals(renamed, RoomFields.from(read));
     assertEquals("inactive", read.get(Fields.ROOM_STATUS).getAsString());
 
     assertStatus("200", session.deleteRoom(id));
-    assertStatus("404", session.readRoom(id));
+    assertStatus("404", session.readRoom(id, ""));
   }
 }

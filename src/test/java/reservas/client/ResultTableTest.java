@@ -33,9 +33,8 @@ class ResultTableTest {
 
   @Test
   void aListingBecomesOneRowPerItemAndAReadBecomesOneRow() {
-    TableModel listing = ResultTable.of(TestJson.object("{'op':'list_rooms_response','status':'200','message':'ok',"
-        + "'count':'2','rooms':[{'room_id':'1','name':'Sala B12','resources':['projetor','tv']},"
-        + "{'room_id':'2','name':'Lab 3','resources':[],'available':'true'}]}"));
+    TableModel listing = ResultTable.of(TestJson.object(
+        "{'op':'list_rooms_response','status':'200','message':'ok','count':'2','rooms':[{'room_id':'1','name':'Sala B12','resources':['projetor','tv']},{'room_id':'2','name':'Lab 3','resources':[],'available':'true'}]}"));
     assertEquals(List.of(
         List.of("room_id", "name", "resources", "available"),
         List.of("1", "Sala B12", "projetor, tv", ""),
@@ -44,6 +43,15 @@ class ResultTableTest {
     TableModel read = ResultTable.of(TestJson.object(
         "{'op':'read_room_response','status':'200','message':'ok','room_id':'1','resources':['tv']}"));
     assertEquals(List.of(List.of("room_id", "resources"), List.of("1", "tv")), cells(read));
+
+    TableModel agenda = ResultTable.of(TestJson.object(
+        "{'op':'read_room_response','status':'200','message':'ok','room_id':'1','slots':['3T1'],'date':'2026-09-15','agenda':[{'slot':'3T1','start_time':'13:00','end_time':'13:50','slot_status':'livre'}]}"));
+    assertEquals(List.of(List.of("slot", "start_time", "end_time", "slot_status"),
+        List.of("3T1", "13:00", "13:50", "livre")), cells(agenda));
+
+    TableModel nested = ResultTable.of(TestJson.object(
+        "{'op':'x_response','status':'200','message':'ok','items':[{'a':'1'}]}"));
+    assertEquals(List.of(List.of("items"), List.of("{\"a\":\"1\"}")), cells(nested));
 
     TableModel failure = ResultTable.of(TestJson.object("{'op':'read_room_response','status':'404','message':'x'}"));
     assertEquals(0, failure.getColumnCount());

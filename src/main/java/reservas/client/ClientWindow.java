@@ -165,7 +165,8 @@ public final class ClientWindow extends JFrame {
     form.separator();
 
     JTextField id = form.field("ID da sala");
-    form.button("Ler sala", () -> session.readRoom(text(id)));
+    JTextField day = form.field("Data da agenda");
+    form.button("Ler sala", () -> session.readRoom(text(id), text(day)));
 
     return form.panel();
   }
@@ -176,7 +177,7 @@ public final class ClientWindow extends JFrame {
     JTextField capacity = form.field("Capacidade");
     JTextField location = form.field("Local");
     JTextField resources = form.field("Recursos");
-    JTextField slots = form.field("Horarios");
+    SlotGrid slots = form.slotGrid("Horarios");
     form.button("Cadastrar sala", () -> session.createRoom(roomFields(name, capacity, location, resources, slots)));
 
     return form.panel();
@@ -189,16 +190,16 @@ public final class ClientWindow extends JFrame {
     JTextField capacity = form.field("Capacidade");
     JTextField location = form.field("Local");
     JTextField resources = form.field("Recursos");
-    JTextField slots = form.field("Horarios");
+    SlotGrid slots = form.slotGrid("Horarios");
     JComboBox<String> roomStatus = form.choice("Estado", "active", "inactive");
 
-    form.button("Carregar", () -> session.readRoom(text(id)), room -> {
+    form.button("Carregar", () -> session.readRoom(text(id), ""), room -> {
       RoomFields loaded = RoomFields.from(room);
       name.setText(loaded.name());
       capacity.setText(loaded.capacity());
       location.setText(loaded.location());
       resources.setText(ListText.format(loaded.resources()));
-      slots.setText(ListText.format(loaded.slots()));
+      slots.select(loaded.slots());
       roomStatus.setSelectedItem(room.get(Fields.ROOM_STATUS).getAsString());
     });
     form.button("Atualizar sala",
@@ -339,9 +340,9 @@ public final class ClientWindow extends JFrame {
   }
 
   private static RoomFields roomFields(JTextField name, JTextField capacity, JTextField location,
-      JTextField resources, JTextField slots) {
+      JTextField resources, SlotGrid slots) {
     return new RoomFields(text(name), text(capacity), text(location), ListText.parse(text(resources)),
-        ListText.parse(text(slots)));
+        slots.selected());
   }
 
   private static String selected(JComboBox<String> choice) {
@@ -379,6 +380,18 @@ public final class ClientWindow extends JFrame {
 
     private JComboBox<String> choice(String label, String... options) {
       return labelled(label, new JComboBox<>(options));
+    }
+
+    private SlotGrid slotGrid(String title) {
+      SlotGrid grid = new SlotGrid();
+      grid.setBorder(BorderFactory.createTitledBorder(title));
+
+      JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT));
+      row.add(grid);
+      fixHeight(row);
+      panel.add(row);
+
+      return grid;
     }
 
     private void button(String label, Callable<JsonObject> call) {

@@ -12,11 +12,10 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 
 import reservas.protocol.Fields;
-import reservas.protocol.StringArrays;
 
 // Resposta como tabela
 final class ResultTable {
-  private static final List<String> LISTINGS = List.of(Fields.USERS, Fields.ROOMS, Fields.RESERVATIONS);
+  private static final List<String> LISTINGS = List.of(Fields.USERS, Fields.ROOMS, Fields.RESERVATIONS, Fields.AGENDA);
   private static final Set<String> ENVELOPE = Set.of(Fields.OP, Fields.STATUS, Fields.MESSAGE);
 
   private ResultTable() {
@@ -63,7 +62,12 @@ final class ResultTable {
       return "";
     }
     if (value.isJsonArray()) {
-      return ListText.format(StringArrays.fromJson(value.getAsJsonArray()));
+      List<String> items = new ArrayList<>();
+      value.getAsJsonArray().forEach(item -> items.add(cell(item)));
+      return ListText.format(items);
+    }
+    if (value.isJsonObject()) {
+      return value.toString();
     }
 
     return value.getAsString();

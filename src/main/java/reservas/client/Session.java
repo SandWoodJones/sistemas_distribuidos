@@ -125,8 +125,11 @@ public final class Session implements AutoCloseable {
     return client.ask(request);
   }
 
-  public JsonObject readRoom(String roomId) throws IOException {
-    return client.ask(onRoom(Op.READ_ROOM, roomId));
+  public JsonObject readRoom(String roomId, String date) throws IOException {
+    JsonObject request = onRoom(Op.READ_ROOM, roomId);
+    addUnlessBlank(request, Fields.DATE, date);
+
+    return client.ask(request);
   }
 
   public JsonObject updateRoom(String roomId, RoomFields room, String roomStatus) throws IOException {
