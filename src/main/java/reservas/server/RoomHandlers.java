@@ -61,8 +61,9 @@ public final class RoomHandlers {
         .orElse(ANY_CAPACITY);
 
     Caller.authenticate(request, context);
-    List<JsonObject> rooms = context.store().listRooms(minCapacity).stream()
-        .map(room -> window.map(asked -> RoomViews.withAvailability(room, asked))
+    SqliteStore store = context.store();
+    List<JsonObject> rooms = store.listRooms(minCapacity).stream()
+        .map(room -> window.map(asked -> RoomViews.withAvailability(room, isFree(store, room, asked)))
             .orElseGet(() -> RoomViews.details(room)))
         .toList();
 
@@ -74,10 +75,12 @@ public final class RoomHandlers {
     long id = roomId(request);
     Optional<LocalDate> date = request.dateFilter();
 
-    Caller.authenticate(request, context);
-    Room room = findRoom(context.store(), id);
+    User viewer = Caller.authenticate(request, context).user();
+    SqliteStore store = context.store();
+    Room room = findRoom(store, id);
 
-    JsonObject view = date.map(day -> RoomViews.withAgenda(room, day)).orElseGet(() -> RoomViews.details(room));
+    JsonObject view = date.map(day -> RoomViews.withAgenda(room, day, agenda(store, room, day, viewer)))
+        .orElseGet(() -> RoomViews.details(room));
     return Responses.found(Op.READ_ROOM, view);
   }
 
@@ -120,6 +123,18 @@ public final class RoomHandlers {
     List<Slot> slots = request.slotsChange().orElse(null);
 
     return new RoomChanges(name, capacity, location, resources, status, slots);
+  }
+
+  // Informativo: sem lock, pode mudar logo depois
+  static boolean isFree(SqliteStore store, Room room, TimeWindow window) {
+    return room.isFreeDuring(window, store.listReservationsOn(room.id(), window.date()));
+  }
+
+  private static List<AgendaBooking> agenda(SqliteStore store, Room room, LocalDate date, User viewer) {
+    return store.listReservationsOn(room.id(), date).stream().map(reservation -> {
+      String owner = ReservationHandlers.owner(store, reservation).name();
+      return new AgendaBooking(reservation.window(), owner, reservation.isOpenTo(viewer) ? reservation.id() : null);
+    }).toList();
   }
 
   static long roomId(Request request) {

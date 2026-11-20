@@ -182,6 +182,115 @@ class ReservationHandlersTest {
   }
 
   @Test
+  void checkAvailabilityAnswersFalseWhenTakenInactiveOrClosed() {
+    String room = ",'room_id':'" + b12.id() + "'";
+    JsonObject free = handle("check_availability", JOAO, room + T1_T2);
+    assertEquals(TestJson.object("{'op':'check_availability_response','status':'200',"
+        + "'message':'Consulta realizada com sucesso','room_id':'" + b12.id() + "','date':'2026-09-15',"
+        + "'start_time':'13:00','end_time':'14:40','available':'true'}"), free);
+
+    reservedId(ANA, ",'date':'2026-09-15','start_time':'13:00','end_time':'13:50'");
+    String[][] cases = {
+        { "false", T1_T2 },
+        { "true", ",'date':'2026-09-15','start_time':'13:50','end_time':'14:40'" },
+        { "true", ",'date':'2026-09-08','start_time':'13:00','end_time':'14:40'" },
+        { "false", ",'date':'2026-09-16','start_time':'13:00','end_time':'14:40'" } };
+    for (String[] c : cases) {
+      assertEquals(c[0], handle("check_availability", JOAO, room + c[1]).get(Fields.AVAILABLE).getAsString(), c[1]);
+    }
+
+    store.updateRoom(b12.id(), new RoomChanges(null, null, null, null, RoomStatus.INACTIVE, null));
+    assertEquals("false", handle("check_availability", JOAO, room + ",'date':'2026-09-15','start_time':'13:50',"
+        + "'end_time':'14:40'").get(Fields.AVAILABLE).getAsString());
+  }
+
+  @Test
+  void checkAvailabilityRejectsABadWindowAndAMissingRoom() {
+    assertResponse("check_availability_response", "400", "Dados em formato invalido", handle("check_availability",
+        JOAO, ",'room_id':'" + b12.id() + "','date':'2026-09-15','start_time':'14:40','end_time':'13:50'"));
+    assertTrue(lastDiagnosis().contains("campo 'end_time'"), lastDiagnosis());
+
+    assertResponse("check_availability_response", "404", "Sala nao encontrada",
+        handle("check_availability", JOAO, ",'room_id':'99'" + T1_T2));
+  }
+
+  @Test
+  void listRoomsCountsReservationsInAvailable() {
+    reservedId(ANA, ",'date':'2026-09-15','start_time':'13:50','end_time':'14:40'");
+
+    JsonObject rooms = handle("list_rooms", JOAO, T1_T2);
+    assertEquals("false",
+        rooms.getAsJsonArray(Fields.ROOMS).get(0).getAsJsonObject().get(Fields.AVAILABLE).getAsString());
+  }
+
+  // Quem reservou aparece para todos; o `reservation_id`, só para o dono e o admin
+  @Test
+  void readRoomAgendaShowsWhoBookedEachClass() {
+    String id = reservedId(JOAO, ",'date':'2026-09-15','start_time':'13:00','end_time':'13:50'");
+    String tuesday = ",'room_id':'" + b12.id() + "','date':'2026-09-15'";
+    String free = "{'slot':'3T2','start_time':'13:50','end_time':'14:40','slot_status':'livre'}";
+
+    for (String token : List.of(JOAO, ADMIN)) {
+      assertEquals(TestJson.json("[{'slot':'3T1','start_time':'13:00','end_time':'13:50','slot_status':'indisponivel',"
+          + "'user':'joao','reservation_id':'" + id + "'}," + free + "]"),
+          handle("read_room", token, tuesday).get(Fields.AGENDA).toString());
+    }
+    assertEquals(TestJson.json("[{'slot':'3T1','start_time':'13:00','end_time':'13:50','slot_status':'indisponivel',"
+        + "'user':'joao'}," + free + "]"), handle("read_room", ANA, tuesday).get(Fields.AGENDA).toString());
+  }
+
+  @Test
+  void listReservationsShowsMineOrEveryonesToTheAdmin() {
+    String mine = reservedId(JOAO, ",'date':'2026-09-15','start_time':'13:00','end_time':'13:50'");
+    reservedId(ANA, ",'date':'2026-09-15','start_time':'13:50','end_time':'14:40'");
+
+    JsonObject listed = handle("list_reservations", JOAO, "");
+    assertResponse("list_reservations_response", "200", "Consulta realizada com sucesso", listed);
+    assertEquals(TestJson.json("[{'reservation_id':'" + mine + "','room_id':'" + b12.id() + "','name':'Sala B12',"
+        + "'user':'joao','date':'2026-09-15','start_time':'13:00','end_time':'13:50',"
+        + "'topic':'Reuniao de projeto','participants':'6'}]"), listed.get(Fields.RESERVATIONS).toString());
+    assertEquals("1", handle("list_reservations", JOAO, ",'scope':'mine'").get(Fields.COUNT).getAsString());
+
+    assertResponse("list_reservations_response", "403", "Permissao insuficiente",
+        handle("list_reservations", JOAO, ",'scope':'all'"));
+    assertEquals("2", handle("list_reservations", ADMIN, ",'scope':'all'").get(Fields.COUNT).getAsString());
+  }
+
+  @Test
+  void listReservationsFiltersByDateAndRoom() {
+    reservedId(JOAO, T1_T2);
+    String[][] cases = {
+        { "1", ",'date':'2026-09-15'" },
+        { "0", ",'date':'2026-09-22'" },
+        { "1", ",'room_id':'" + b12.id() + "'" },
+        { "0", ",'room_id':'99'" },
+        { "1", ",'date':'2026-09-15','room_id':'" + b12.id() + "'" } };
+
+    for (String[] c : cases) {
+      JsonObject listed = handle("list_reservations", ADMIN, ",'scope':'all'" + c[1]);
+      assertStatus("200", listed);
+      assertEquals(c[0], listed.get(Fields.COUNT).getAsString(), c[1]);
+    }
+  }
+
+  @Test
+  void listReservationsRejectsFiltersOutsideTheFormat() {
+    String[][] cases = {
+        { "scope", ",'scope':''" },
+        { "scope", ",'scope':'todos'" },
+        { "date", ",'date':''" },
+        { "date", ",'date':'2026-02-30'" },
+        { "room_id", ",'room_id':'abc'" },
+        { "room_id", ",'room_id':null" } };
+
+    for (String[] c : cases) {
+      assertResponse("list_reservations_response", "400", "Filtros em formato invalido",
+          handle("list_reservations", JOAO, c[1]));
+      assertTrue(lastDiagnosis().contains("campo '" + c[0] + "'"), c[1] + " -> " + lastDiagnosis());
+    }
+  }
+
+  @Test
   void readReservationIsForTheOwnerAndTheAdmin() {
     String id = reservedId(JOAO, T1_T2);
 

@@ -1,6 +1,7 @@
 package reservas.server;
 
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.List;
@@ -14,7 +15,6 @@ import reservas.protocol.Op;
 import reservas.protocol.ProtocolException;
 import reservas.protocol.Request;
 import reservas.protocol.Responses;
-import reservas.protocol.Role;
 import reservas.protocol.RoomStatus;
 import reservas.protocol.Slot;
 import reservas.protocol.Status;
@@ -32,9 +32,24 @@ public final class ReservationHandlers {
   }
 
   public static void install(Dispatcher dispatcher) {
+    dispatcher.register(Op.CHECK_AVAILABILITY, ReservationHandlers::checkAvailability);
     dispatcher.register(Op.CREATE_RESERVATION, ReservationHandlers::createReservation);
+    dispatcher.register(Op.LIST_RESERVATIONS, ReservationHandlers::listReservations);
     dispatcher.register(Op.READ_RESERVATION, ReservationHandlers::readReservation);
     dispatcher.register(Op.DELETE_RESERVATION, ReservationHandlers::deleteReservation);
+  }
+
+  static JsonObject checkAvailability(JsonObject json, ServerContext context) {
+    Request request = new Request(json, Messages.DATA_BAD_REQUEST);
+    long roomId = RoomHandlers.roomId(request);
+    TimeWindow window = request.window();
+
+    Caller.authenticate(request, context);
+    SqliteStore store = context.store();
+    Room room = RoomHandlers.findRoom(store, roomId);
+
+    boolean available = RoomHandlers.isFree(store, room, window);
+    return Responses.found(Op.CHECK_AVAILABILITY, ReservationViews.availability(room.id(), window, available));
   }
 
   static JsonObject createReservation(JsonObject json, ServerContext context) {
@@ -49,6 +64,26 @@ public final class ReservationHandlers {
     JsonObject response = Responses.of(Op.CREATE_RESERVATION, Status.CREATED, "Reserva realizada com sucesso");
     response.addProperty(Fields.RESERVATION_ID, Long.toString(reservation.id()));
     return response;
+  }
+
+  // Sem `scope` vale "mine"; "all" só para admin
+  static JsonObject listReservations(JsonObject json, ServerContext context) {
+    Request request = new Request(json, RoomHandlers.FILTERS_BAD_REQUEST);
+    boolean all = request.filter(Fields.SCOPE, Formats.SCOPE).map(Fields.SCOPE_ALL::equals).orElse(false);
+    LocalDate date = request.dateFilter().orElse(null);
+    Long roomId = request.filter(Fields.ROOM_ID, Formats.ID).map(Long::valueOf).orElse(null);
+
+    Caller caller = Caller.authenticate(request, context);
+    if (all) {
+      caller.requireAdmin();
+    }
+
+    SqliteStore store = context.store();
+    ReservationFilter filter = new ReservationFilter(all ? null : caller.user().id(), date, roomId);
+    List<JsonObject> reservations = store.listReservations(filter).stream()
+        .map(reservation -> summary(store, reservation)).toList();
+
+    return Responses.listing(Op.LIST_RESERVATIONS, Fields.RESERVATIONS, reservations);
   }
 
   static JsonObject readReservation(JsonObject json, ServerContext context) {
@@ -123,7 +158,7 @@ public final class ReservationHandlers {
   }
 
   private static void requireOwnerOrAdmin(User user, Reservation reservation) {
-    if (reservation.userId() != user.id() && user.role() != Role.ADMIN) {
+    if (!reservation.isOpenTo(user)) {
       throw ProtocolException.forbidden(Admin.FORBIDDEN,
           "reserva " + reservation.id() + " e de outro usuario e \"" + user.name() + "\" nao e admin");
     }
@@ -136,10 +171,21 @@ public final class ReservationHandlers {
     }
   }
 
+  private static JsonObject summary(SqliteStore store, Reservation reservation) {
+    return ReservationViews.summary(reservation, room(store, reservation).name(), owner(store, reservation).name());
+  }
+
   private static JsonObject details(SqliteStore store, Reservation reservation, ZoneId zone) {
-    Room room = store.findRoom(reservation.roomId()).orElseThrow(() -> dangling(reservation));
-    User owner = store.findUserById(reservation.userId()).orElseThrow(() -> dangling(reservation));
-    return ReservationViews.details(reservation, room.name(), owner.name(), zone);
+    return ReservationViews.details(reservation, room(store, reservation).name(), owner(store, reservation).name(),
+        zone);
+  }
+
+  private static Room room(SqliteStore store, Reservation reservation) {
+    return store.findRoom(reservation.roomId()).orElseThrow(() -> dangling(reservation));
+  }
+
+  static User owner(SqliteStore store, Reservation reservation) {
+    return store.findUserById(reservation.userId()).orElseThrow(() -> dangling(reservation));
   }
 
   private static long reservationId(Request request) {

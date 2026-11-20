@@ -5,9 +5,20 @@ import java.time.ZoneId;
 import com.google.gson.JsonObject;
 
 import reservas.protocol.Fields;
+import reservas.protocol.TimeWindow;
 
 final class ReservationViews {
   private ReservationViews() {
+  }
+
+  static JsonObject availability(long roomId, TimeWindow window, boolean available) {
+    JsonObject view = new JsonObject();
+    view.addProperty(Fields.ROOM_ID, Long.toString(roomId));
+    view.addProperty(Fields.DATE, window.date().toString());
+    view.addProperty(Fields.START_TIME, window.start().toString());
+    view.addProperty(Fields.END_TIME, window.end().toString());
+    view.addProperty(Fields.AVAILABLE, Boolean.toString(available));
+    return view;
   }
 
   static JsonObject summary(Reservation reservation, String roomName, String userName) {

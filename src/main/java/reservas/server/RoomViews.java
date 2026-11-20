@@ -1,6 +1,8 @@
 package reservas.server;
 
 import java.time.LocalDate;
+import java.util.List;
+import java.util.Optional;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
@@ -28,17 +30,15 @@ final class RoomViews {
     return view;
   }
 
-  static JsonObject withAvailability(Room room, TimeWindow window) {
+  static JsonObject withAvailability(Room room, boolean available) {
     JsonObject view = details(room);
-    boolean available = room.status() == RoomStatus.ACTIVE && room.worksDuring(window);
     view.addProperty(Fields.AVAILABLE, Boolean.toString(available));
     return view;
   }
 
-  static JsonObject withAgenda(Room room, LocalDate date) {
-    SlotStatus status = room.status() == RoomStatus.ACTIVE ? SlotStatus.FREE : SlotStatus.UNAVAILABLE;
+  static JsonObject withAgenda(Room room, LocalDate date, List<AgendaBooking> bookings) {
     JsonArray agenda = new JsonArray();
-    room.slotsOn(date.getDayOfWeek()).forEach(slot -> agenda.add(agendaItem(slot, status)));
+    room.slotsOn(date.getDayOfWeek()).forEach(slot -> agenda.add(agendaItem(room, date, slot, bookings)));
 
     JsonObject view = details(room);
     view.addProperty(Fields.DATE, date.toString());
@@ -46,12 +46,25 @@ final class RoomViews {
     return view;
   }
 
-  private static JsonObject agendaItem(Slot slot, SlotStatus status) {
+  private static JsonObject agendaItem(Room room, LocalDate date, Slot slot, List<AgendaBooking> bookings) {
+    TimeWindow lesson = new TimeWindow(date, slot.period().start(), slot.period().end());
+    Optional<AgendaBooking> booked = bookings.stream().filter(booking -> booking.window().overlaps(lesson))
+        .findFirst();
+    boolean free = room.status() == RoomStatus.ACTIVE && booked.isEmpty();
+
     JsonObject item = new JsonObject();
     item.addProperty(Fields.SLOT, slot.wireName());
     item.addProperty(Fields.START_TIME, slot.period().start().toString());
     item.addProperty(Fields.END_TIME, slot.period().end().toString());
-    item.addProperty(Fields.SLOT_STATUS, status.wireName());
+    item.addProperty(Fields.SLOT_STATUS, (free ? SlotStatus.FREE : SlotStatus.UNAVAILABLE).wireName());
+    booked.ifPresent(booking -> addBooking(item, booking));
     return item;
+  }
+
+  private static void addBooking(JsonObject item, AgendaBooking booking) {
+    item.addProperty(Fields.USER, booking.user());
+    if (booking.reservationId() != null) {
+      item.addProperty(Fields.RESERVATION_ID, Long.toString(booking.reservationId()));
+    }
   }
 }

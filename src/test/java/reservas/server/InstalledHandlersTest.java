@@ -63,9 +63,12 @@ class InstalledHandlersTest {
         { "update_room", "{'op':'update_room'," + bad + ",'room_id':'1','capacity':'20'}",
             "Dados da sala em formato invalido" },
         { "delete_room", "{'op':'delete_room'," + bad + ",'room_id':'1'}", "Dados em formato invalido" },
+        { "check_availability", "{'op':'check_availability'," + bad + ",'room_id':'1','date':'2026-09-15',"
+            + "'start_time':'13:00','end_time':'14:40'}", "Dados em formato invalido" },
         { "create_reservation", "{'op':'create_reservation'," + bad + ",'room_id':'1','date':'2026-09-15',"
             + "'start_time':'13:00','end_time':'14:40','topic':'Aula','participants':'6'}",
             "Dados da reserva em formato invalido" },
+        { "list_reservations", "{'op':'list_reservations'," + bad + "}", "Filtros em formato invalido" },
         { "read_reservation", "{'op':'read_reservation'," + bad + ",'reservation_id':'1'}",
             "Dados em formato invalido" },
         { "delete_reservation", "{'op':'delete_reservation'," + bad + ",'reservation_id':'1'}",

@@ -31,6 +31,12 @@ public record Room(long id, String name, int capacity, String location, List<Str
         .allMatch(period -> slots.contains(new Slot(day, period)));
   }
 
+  // Ativa, funcionando em todas as aulas da janela e sem reserva sobreposta
+  public boolean isFreeDuring(TimeWindow window, List<Reservation> sameDay) {
+    return status == RoomStatus.ACTIVE && worksDuring(window)
+        && sameDay.stream().noneMatch(reservation -> reservation.window().overlaps(window));
+  }
+
   public List<Slot> slotsOn(DayOfWeek day) {
     return slots.stream().filter(slot -> slot.day() == day).sorted(Comparator.comparing(Slot::period)).toList();
   }

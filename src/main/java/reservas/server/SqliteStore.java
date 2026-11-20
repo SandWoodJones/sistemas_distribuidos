@@ -6,6 +6,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Supplier;
 
@@ -212,6 +213,12 @@ public final class SqliteStore implements AutoCloseable {
   public List<Reservation> listReservationsOn(long roomId, LocalDate date) {
     return database.queryList("SELECT * FROM reservations WHERE room_id = ? AND date = ? ORDER BY start_time",
         SqliteStore::toReservation, roomId, date.toString());
+  }
+
+  public List<Reservation> listReservations(ReservationFilter filter) {
+    return database.queryList("SELECT * FROM reservations WHERE (?1 IS NULL OR user_id = ?1) "
+        + "AND (?2 IS NULL OR date = ?2) AND (?3 IS NULL OR room_id = ?3) ORDER BY date, start_time, id",
+        SqliteStore::toReservation, filter.userId(), Objects.toString(filter.date(), null), filter.roomId());
   }
 
   public Reservation createReservation(Booking booking, long userId, Instant createdAt) {
