@@ -3,6 +3,7 @@ package reservas.server;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.time.ZoneId;
 import java.util.List;
 
@@ -36,6 +37,7 @@ public final class ReservationHandlers {
     dispatcher.register(Op.CREATE_RESERVATION, ReservationHandlers::createReservation);
     dispatcher.register(Op.LIST_RESERVATIONS, ReservationHandlers::listReservations);
     dispatcher.register(Op.READ_RESERVATION, ReservationHandlers::readReservation);
+    dispatcher.register(Op.UPDATE_RESERVATION, ReservationHandlers::updateReservation);
     dispatcher.register(Op.DELETE_RESERVATION, ReservationHandlers::deleteReservation);
   }
 
@@ -98,6 +100,20 @@ public final class ReservationHandlers {
     return Responses.found(Op.READ_RESERVATION, details(store, reservation, context.clock().getZone()));
   }
 
+  static JsonObject updateReservation(JsonObject json, ServerContext context) {
+    Request request = new Request(json, RESERVATION_BAD_REQUEST);
+    long id = reservationId(request);
+    ReservationChanges changes = changes(request);
+
+    User user = Caller.authenticate(request, context).user();
+    SqliteStore store = context.store();
+    long roomId = findReservation(store, id).roomId();
+    LocalDateTime now = LocalDateTime.now(context.clock());
+    store.withRoomLock(roomId, () -> reschedule(store, user, id, changes, now));
+
+    return Responses.of(Op.UPDATE_RESERVATION, Status.OK, "Reserva atualizada com sucesso");
+  }
+
   static JsonObject deleteReservation(JsonObject json, ServerContext context) {
     Request request = new Request(json, Messages.DATA_BAD_REQUEST);
     long id = reservationId(request);
@@ -128,6 +144,59 @@ public final class ReservationHandlers {
     requireFree(store.listReservationsOn(room.id(), booking.window().date()), booking.window());
 
     return store.createReservation(booking, user.id(), createdAt);
+  }
+
+  // `room_id` e `date` não mudam; para trocar, cancela-se e cria-se outra
+  private static ReservationChanges changes(Request request) {
+    request.mustBeAbsent(Fields.ROOM_ID);
+    request.mustBeAbsent(Fields.DATE);
+    LocalTime start = request.optional(Fields.START_TIME, Formats.START_TIME).map(LocalTime::parse).orElse(null);
+    LocalTime end = request.optional(Fields.END_TIME, Formats.END_TIME).map(LocalTime::parse).orElse(null);
+    String topic = request.optional(Fields.TOPIC, Formats.TOPIC).orElse(null);
+    Integer participants = request.optional(Fields.PARTICIPANTS, Formats.CAPACITY).map(Integer::valueOf).orElse(null);
+
+    return new ReservationChanges(start, end, topic, participants);
+  }
+
+  // Roda sob o lock da sala da reserva
+  private static Reservation reschedule(SqliteStore store, User user, long id, ReservationChanges changes,
+      LocalDateTime now) {
+    Reservation current = findReservation(store, id);
+    requireOwner(user, current);
+    requireActive(current, now);
+
+    Room room = room(store, current);
+    Reservation updated = changed(current, changes, now);
+    requireFits(room, updated.participants());
+    if (changes.movesTime()) {
+      requireBookable(room, updated.window());
+      requireFree(othersOn(store, current), updated.window());
+    }
+
+    store.updateReservation(updated);
+    return updated;
+  }
+
+  // Horário resultante com fim antes do início, ou início novo que já passou
+  private static Reservation changed(Reservation current, ReservationChanges changes, LocalDateTime now) {
+    Reservation updated;
+    try {
+      updated = current.with(changes);
+    } catch (IllegalArgumentException e) {
+      throw ProtocolException.badRequest(RESERVATION_BAD_REQUEST, "campo 'end_time': " + e.getMessage(), e);
+    }
+
+    if (changes.start() != null && !updated.window().startsAt().isAfter(now)) {
+      throw ProtocolException.badRequest(RESERVATION_BAD_REQUEST,
+          "campo 'start_time': inicio " + updated.window().startsAt() + " ja passou, agora e " + now);
+    }
+
+    return updated;
+  }
+
+  private static List<Reservation> othersOn(SqliteStore store, Reservation reservation) {
+    return store.listReservationsOn(reservation.roomId(), reservation.window().date()).stream()
+        .filter(other -> other.id() != reservation.id()).toList();
   }
 
   private static void requireFits(Room room, int participants) {
@@ -161,6 +230,14 @@ public final class ReservationHandlers {
     if (!reservation.isOpenTo(user)) {
       throw ProtocolException.forbidden(Admin.FORBIDDEN,
           "reserva " + reservation.id() + " e de outro usuario e \"" + user.name() + "\" nao e admin");
+    }
+  }
+
+  // Nem o admin altera reserva de outro
+  private static void requireOwner(User user, Reservation reservation) {
+    if (reservation.userId() != user.id()) {
+      throw ProtocolException.forbidden(Admin.FORBIDDEN,
+          "reserva " + reservation.id() + " e de outro usuario; so o dono altera, mesmo sendo admin");
     }
   }
 

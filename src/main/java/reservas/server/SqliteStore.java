@@ -230,6 +230,13 @@ public final class SqliteStore implements AutoCloseable {
     return new Reservation(id, booking.roomId(), userId, window, booking.topic(), booking.participants(), createdAt);
   }
 
+  public void updateReservation(Reservation reservation) {
+    TimeWindow window = reservation.window();
+    database.update("UPDATE reservations SET start_time = ?, end_time = ?, topic = ?, participants = ? WHERE id = ?",
+        window.start().toString(), window.end().toString(), reservation.topic(), reservation.participants(),
+        reservation.id());
+  }
+
   public void deleteReservation(long id) {
     database.update("DELETE FROM reservations WHERE id = ?", id);
   }

@@ -71,6 +71,8 @@ class InstalledHandlersTest {
         { "list_reservations", "{'op':'list_reservations'," + bad + "}", "Filtros em formato invalido" },
         { "read_reservation", "{'op':'read_reservation'," + bad + ",'reservation_id':'1'}",
             "Dados em formato invalido" },
+        { "update_reservation", "{'op':'update_reservation'," + bad + ",'reservation_id':'1','start_time':'',"
+            + "'end_time':'14:40','topic':'','participants':''}", "Dados da reserva em formato invalido" },
         { "delete_reservation", "{'op':'delete_reservation'," + bad + ",'reservation_id':'1'}",
             "Dados em formato invalido" } };
 

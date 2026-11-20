@@ -304,6 +304,135 @@ class ReservationHandlersTest {
     assertTrue(lastDiagnosis().contains("campo 'reservation_id'"), lastDiagnosis());
   }
 
+  private JsonObject update(String token, String id, String start, String end, String topic, String participants) {
+    return handle("update_reservation", token, reservationId(id) + ",'start_time':'" + start + "','end_time':'" + end
+        + "','topic':'" + topic + "','participants':'" + participants + "'");
+  }
+
+  private JsonObject read(String id) {
+    return handle("read_reservation", ADMIN, reservationId(id));
+  }
+
+  @Test
+  void updateReservationChangesOnlyWhatIsFilledIn() {
+    String id = reservedId(JOAO, ",'date':'2026-09-15','start_time':'13:00','end_time':'13:50'");
+
+    assertResponse("update_reservation_response", "200", "Reserva atualizada com sucesso",
+        update(JOAO, id, "", "14:40", "", "8"));
+
+    JsonObject read = read(id);
+    assertEquals("13:00", read.get(Fields.START_TIME).getAsString());
+    assertEquals("14:40", read.get(Fields.END_TIME).getAsString());
+    assertEquals("Reuniao de projeto", read.get(Fields.TOPIC).getAsString());
+    assertEquals("8", read.get(Fields.PARTICIPANTS).getAsString());
+  }
+
+  @Test
+  void updateReservationRejectsEachFieldOutsideTheFormat() {
+    String id = reservedId(JOAO, T1_T2);
+    String keep = ",'start_time':'','end_time':'','topic':'','participants':'8'";
+    String[][] cases = {
+        { "reservation_id", ",'reservation_id':''" + keep },
+        { "room_id", reservationId(id) + ",'room_id':'" + b12.id() + "'" + keep },
+        { "date", reservationId(id) + ",'date':'2026-09-15'" + keep },
+        { "start_time", reservationId(id) + ",'start_time':'13:10','end_time':'','topic':'','participants':''" },
+        { "start_time", reservationId(id) + ",'start_time':null,'end_time':'','topic':'','participants':'8'" },
+        { "end_time", reservationId(id) + ",'start_time':'','end_time':'13:00','topic':'','participants':''" },
+        { "topic", reservationId(id) + ",'start_time':'','end_time':'','topic':'Aula/1','participants':''" },
+        { "participants", reservationId(id) + ",'start_time':'','end_time':'','topic':'','participants':'0'" } };
+
+    for (String[] c : cases) {
+      assertResponse("update_reservation_response", "400", "Dados da reserva em formato invalido",
+          handle("update_reservation", JOAO, c[1]));
+      assertTrue(lastDiagnosis().contains("campo '" + c[0] + "'"), c[1] + " -> " + lastDiagnosis());
+    }
+
+    assertResponse("update_reservation_response", "400", "Nenhum dado para atualizar",
+        update(JOAO, id, "", "", "", ""));
+    assertResponse("update_reservation_response", "400", "Nenhum dado para atualizar",
+        handle("update_reservation", JOAO, reservationId(id)));
+  }
+
+  // 404 antes do 403, e nem o admin altera reserva de outro
+  @Test
+  void updateReservationIsForTheOwnerOnly() {
+    String id = reservedId(JOAO, T1_T2);
+
+    assertResponse("update_reservation_response", "404", "Reserva nao encontrada",
+        update(ANA, "99", "", "", "Aula", ""));
+    for (String token : List.of(ANA, ADMIN)) {
+      assertResponse("update_reservation_response", "403", "Permissao insuficiente",
+          update(token, id, "", "", "Aula", ""));
+    }
+  }
+
+  @Test
+  void updateReservationRejectsOneThatHasEnded() {
+    TimeWindow lastTuesday = new TimeWindow(LocalDate.parse("2026-09-08"), LocalTime.parse("13:00"),
+        LocalTime.parse("14:40"));
+    Reservation ended = store.createReservation(new Booking(b12.id(), lastTuesday, "Aula", 6), joao.id(), T0);
+
+    assertResponse("update_reservation_response", "409", "Reserva ja encerrada",
+        update(JOAO, Long.toString(ended.id()), "", "", "Outra aula", ""));
+  }
+
+  @Test
+  void updateReservationChecksTheResultingTimesAndParticipants() {
+    String id = reservedId(JOAO, ",'date':'2026-09-15','start_time':'13:50','end_time':'14:40'");
+
+    assertResponse("update_reservation_response", "400", "Dados da reserva em formato invalido",
+        update(JOAO, id, "", "13:50", "", ""));
+    assertTrue(lastDiagnosis().contains("campo 'end_time'"), lastDiagnosis());
+
+    assertResponse("update_reservation_response", "400", "Dados da reserva em formato invalido",
+        update(JOAO, id, "", "", "", "13"));
+    assertTrue(lastDiagnosis().contains("campo 'participants'"), lastDiagnosis());
+  }
+
+  // Só um início novo no passado é 400: a reserva em andamento ainda pode ser estendida (T0 = 14:32 de quarta)
+  @Test
+  void updateReservationRejectsOnlyANewStartInThePast() {
+    store.updateRoom(b12.id(), new RoomChanges(null, null, null, null, null,
+        List.of(slot("4T1"), slot("4T2"), slot("4T3"), slot("4T4"))));
+    TimeWindow now = new TimeWindow(LocalDate.parse("2026-09-09"), LocalTime.parse("13:50"), LocalTime.parse("14:40"));
+    String ongoing = Long.toString(store.createReservation(new Booking(b12.id(), now, "Aula", 6), joao.id(), T0).id());
+
+    assertStatus("200", update(JOAO, ongoing, "", "15:30", "", ""));
+    assertResponse("update_reservation_response", "400", "Dados da reserva em formato invalido",
+        update(JOAO, ongoing, "13:00", "", "", ""));
+    assertTrue(lastDiagnosis().contains("campo 'start_time'"), lastDiagnosis());
+  }
+
+  @Test
+  void updateReservationRejectsATimeTheRoomCannotTake() {
+    String id = reservedId(JOAO, ",'date':'2026-09-15','start_time':'13:00','end_time':'13:50'");
+    reservedId(ANA, ",'date':'2026-09-15','start_time':'13:50','end_time':'14:40'");
+
+    assertResponse("update_reservation_response", "409", "Sala ja reservada no periodo solicitado",
+        update(JOAO, id, "", "14:40", "", ""));
+    assertResponse("update_reservation_response", "409", "Horario fora do funcionamento da sala",
+        update(JOAO, id, "", "15:30", "", ""));
+  }
+
+  @Test
+  void updateReservationDoesNotCollideWithItself() {
+    String id = reservedId(JOAO, T1_T2);
+
+    assertStatus("200", update(JOAO, id, "", "13:50", "", ""));
+    assertStatus("200", update(JOAO, id, "", "14:40", "", ""));
+  }
+
+  // Sala inativa: o horário não muda, o resto sim
+  @Test
+  void updateReservationInAnInactiveRoomKeepsItsTime() {
+    String id = reservedId(JOAO, T1_T2);
+    store.updateRoom(b12.id(), new RoomChanges(null, null, null, null, RoomStatus.INACTIVE, null));
+
+    assertResponse("update_reservation_response", "409", "Sala indisponivel para reserva",
+        update(JOAO, id, "", "13:50", "", ""));
+    assertStatus("200", update(JOAO, id, "", "", "Outro assunto", ""));
+  }
+
   @Test
   void deleteReservationFreesTheRoom() {
     String id = reservedId(JOAO, T1_T2);
