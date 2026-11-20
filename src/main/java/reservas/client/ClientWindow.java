@@ -6,6 +6,7 @@ import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.Font;
 import java.io.IOException;
+import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -13,6 +14,7 @@ import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Stream;
@@ -44,6 +46,7 @@ import reservas.protocol.Fields;
 // Janela do cliente
 public final class ClientWindow extends JFrame {
   private static final int TIMEOUT_MILLIS = 10_000;
+  private static final int CLOSE_WAIT_MILLIS = 3_000;
   private static final int LABEL_WIDTH = 120;
   private static final Color OK = new Color(0x1B, 0x7F, 0x3B);
   private static final Color FAILED = new Color(0xB0, 0x00, 0x20);
@@ -220,7 +223,7 @@ public final class ClientWindow extends JFrame {
   private JPanel bookTab() {
     Form form = new Form();
     JTextField room = form.field("ID da sala");
-    JTextField date = form.field("Data");
+    JTextField date = form.dateField("Data", LocalDate.now());
     form.button("Ver horarios do dia", () -> session.readRoom(text(room), text(date)));
     form.separator();
 
@@ -382,9 +385,20 @@ public final class ClientWindow extends JFrame {
     messages.setCaretPosition(messages.getDocument().getLength());
   }
 
+  // Espera o logout de quem fecha a janela logado, até CLOSE_WAIT_MILLIS
   @Override
   public void dispose() {
-    network.shutdownNow();
+    if (session != null) {
+      disconnect();
+    }
+
+    network.shutdown();
+    try {
+      network.awaitTermination(CLOSE_WAIT_MILLIS, TimeUnit.MILLISECONDS);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+    }
+
     super.dispose();
   }
 
@@ -420,6 +434,14 @@ public final class ClientWindow extends JFrame {
     return new String(field.getPassword());
   }
 
+  // Só mexe no campo, não fala com o servidor
+  private static JButton dayButton(String arrow, String tip, JTextField date, int days) {
+    JButton button = new JButton(arrow);
+    button.setToolTipText(tip);
+    button.addActionListener(event -> date.setText(DateText.shift(text(date), days)));
+    return button;
+  }
+
   private static void onEdt(Runnable update) {
     SwingUtilities.invokeLater(update);
   }
@@ -439,6 +461,18 @@ public final class ClientWindow extends JFrame {
 
     private JPasswordField password(String label) {
       return labelled(label, new JPasswordField(18));
+    }
+
+    // Data com botões para o dia seguinte e o anterior
+    private JTextField dateField(String label, LocalDate initial) {
+      JTextField date = new JTextField(initial.toString(), 10);
+      JPanel box = new JPanel(new FlowLayout(FlowLayout.LEFT, 2, 0));
+      box.add(date);
+      box.add(dayButton("▲", "Amanha", date, 1));
+      box.add(dayButton("▼", "Ontem", date, -1));
+      labelled(label, box);
+
+      return date;
     }
 
     private JComboBox<String> choice(String label, String... options) {

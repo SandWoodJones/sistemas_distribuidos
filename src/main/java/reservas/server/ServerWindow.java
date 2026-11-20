@@ -21,6 +21,7 @@ import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JSplitPane;
+import javax.swing.JTabbedPane;
 import javax.swing.JTable;
 import javax.swing.JTextArea;
 import javax.swing.JTextField;
@@ -30,11 +31,14 @@ import javax.swing.text.BadLocationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-// Porta, usuários logados e log. Os listeners só leem a tela e chamam o servidor
+// Porta, tabelas do que o servidor guarda e log. Os listeners só leem a tela e chamam o servidor
 public final class ServerWindow extends JFrame {
   private static final Logger log = LoggerFactory.getLogger(ServerWindow.class);
   private static final int MAX_LOG_LINES = 5000;
   private static final long REFRESH_MILLIS = 1000;
+  private static final String USERS_TAB = "Usuarios logados";
+  private static final String ROOMS_TAB = "Salas";
+  private static final String RESERVATIONS_TAB = "Reservas";
   private static final Color RUNNING = new Color(0x1B, 0x7F, 0x3B);
   private static final Color STOPPED = new Color(0xB0, 0x00, 0x20);
 
@@ -46,8 +50,10 @@ public final class ServerWindow extends JFrame {
   private final JTextField port;
   private final JButton toggle = new JButton("Iniciar");
   private final JLabel status = new JLabel();
-  private final LoggedInTableModel loggedIn;
-  private final JLabel loggedInTitle = new JLabel();
+  private final ListTableModel<LoggedInUser> loggedIn;
+  private final ListTableModel<Room> rooms = ServerTables.rooms();
+  private final ListTableModel<ReservationRow> reservations;
+  private final JTabbedPane tables = new JTabbedPane();
   private final JTextArea logPane = new JTextArea(30, 100);
 
   private ServerSocketLoop server;
@@ -57,7 +63,8 @@ public final class ServerWindow extends JFrame {
     this.store = store;
     this.clock = clock;
     this.port = new JTextField(Integer.toString(initialPort), 6);
-    this.loggedIn = new LoggedInTableModel(clock.getZone());
+    this.loggedIn = ServerTables.loggedIn(clock.getZone());
+    this.reservations = ServerTables.reservations(clock.getZone());
 
     setDefaultCloseOperation(DO_NOTHING_ON_CLOSE);
     add(controlBar(), BorderLayout.NORTH);
@@ -73,7 +80,7 @@ public final class ServerWindow extends JFrame {
 
     showStopped("parado: escolha a porta e clique em Iniciar");
     LogPaneAppender.subscribe(logListener);
-    refresher.scheduleWithFixedDelay(this::refreshLoggedIn, 0, REFRESH_MILLIS, TimeUnit.MILLISECONDS);
+    refresher.scheduleWithFixedDelay(this::refreshTables, 0, REFRESH_MILLIS, TimeUnit.MILLISECONDS);
 
     pack();
     setLocationRelativeTo(null);
@@ -93,20 +100,20 @@ public final class ServerWindow extends JFrame {
   }
 
   private JSplitPane panes() {
-    JPanel users = new JPanel(new BorderLayout(0, 4));
-    users.setBorder(BorderFactory.createEmptyBorder(4, 8, 8, 4));
-    users.add(loggedInTitle, BorderLayout.NORTH);
-    users.add(new JScrollPane(new JTable(loggedIn)), BorderLayout.CENTER);
+    tables.addTab(USERS_TAB, new JScrollPane(new JTable(loggedIn)));
+    tables.addTab(ROOMS_TAB, new JScrollPane(new JTable(rooms)));
+    tables.addTab(RESERVATIONS_TAB, new JScrollPane(new JTable(reservations)));
+    tables.setBorder(BorderFactory.createEmptyBorder(4, 8, 4, 8));
 
     logPane.setEditable(false);
     logPane.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
     JPanel messages = new JPanel(new BorderLayout(0, 4));
-    messages.setBorder(BorderFactory.createEmptyBorder(4, 4, 8, 8));
+    messages.setBorder(BorderFactory.createEmptyBorder(4, 8, 8, 8));
     messages.add(new JLabel("Mensagens recebidas e enviadas"), BorderLayout.NORTH);
     messages.add(new JScrollPane(logPane), BorderLayout.CENTER);
 
-    JSplitPane split = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, users, messages);
-    split.setDividerLocation(300);
+    JSplitPane split = new JSplitPane(JSplitPane.VERTICAL_SPLIT, tables, messages);
+    split.setDividerLocation(220);
     return split;
   }
 
@@ -161,15 +168,22 @@ public final class ServerWindow extends JFrame {
   }
 
   // Roda na thread do `refresher`, fora da EDT
-  private void refreshLoggedIn() {
+  private void refreshTables() {
     try {
       List<LoggedInUser> users = store.listLoggedIn(clock.instant());
+      List<Room> stored = store.listRooms(1);
+      List<ReservationRow> booked = ServerTables.reservationRows(
+          store.listReservations(new ReservationFilter(null, null, null)), stored, store.listUsers());
       SwingUtilities.invokeLater(() -> {
         loggedIn.show(users);
-        loggedInTitle.setText("Usuarios logados: " + users.size());
+        rooms.show(stored);
+        reservations.show(booked);
+        tables.setTitleAt(0, USERS_TAB + " (" + users.size() + ")");
+        tables.setTitleAt(1, ROOMS_TAB + " (" + stored.size() + ")");
+        tables.setTitleAt(2, RESERVATIONS_TAB + " (" + booked.size() + ")");
       });
     } catch (RuntimeException e) {
-      log.error("falha atualizando a lista de usuarios logados", e);
+      log.error("falha atualizando as tabelas da janela", e);
     }
   }
 

@@ -157,6 +157,11 @@ public final class SqliteStore implements AutoCloseable {
     database.update("DELETE FROM sessions WHERE token = ?", token);
   }
 
+  // Devolve quantas sessões havia
+  public int deleteAllSessions() {
+    return database.update("DELETE FROM sessions");
+  }
+
   // Renova o timeout de uma sessão
   public void touchSession(String token, Instant now) {
     database.update("UPDATE sessions SET last_used = ? WHERE token = ?", now.toString(), token);

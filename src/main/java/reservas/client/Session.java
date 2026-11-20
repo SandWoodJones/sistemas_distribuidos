@@ -187,10 +187,17 @@ public final class Session implements AutoCloseable {
     return client.ask(onReservation(Op.DELETE_RESERVATION, reservationId));
   }
 
+  // O token morre junto com a sessão, então sai antes: senão o próximo login dá 409 por até 30 min
   @Override
   public void close() throws IOException {
-    forget();
-    client.close();
+    try {
+      if (isLoggedIn()) {
+        logout();
+      }
+    } finally {
+      forget();
+      client.close();
+    }
   }
 
   private void forget() {

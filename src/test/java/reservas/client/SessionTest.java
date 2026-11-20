@@ -91,6 +91,19 @@ class SessionTest {
     assertFalse(session.isLoggedIn());
   }
 
+  // Fechar logado não prende a conta: a próxima sessão entra sem 409
+  @Test
+  void closingWhileLoggedInLogsOut() throws IOException {
+    session.register(EMAIL, "joao", "senha123");
+    session.login(EMAIL, "senha123");
+
+    session.close();
+    assertTrue(traffic.stream().anyMatch(line -> line.contains("\"logout_response\"")), traffic.toString());
+
+    session = new Session(TestClients.connect(server.port(), traffic::add));
+    assertStatus("200", session.login(EMAIL, "senha123"));
+  }
+
   @Test
   void forgetsTheTokenAfterDeletingTheAccount() throws IOException {
     session.register(EMAIL, "joao", "senha123");

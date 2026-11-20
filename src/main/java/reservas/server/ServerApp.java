@@ -60,7 +60,7 @@ public final class ServerApp {
     Clock clock = Clock.system(ZONE);
 
     try (SqliteStore store = SqliteStore.openFile(DATABASE_FILE)) {
-      seedAdmin(store, clock.instant());
+      prepare(store, clock.instant());
 
       try (ServerSocketLoop server = start(port, store, clock)) {
         server.acceptForever();
@@ -72,7 +72,7 @@ public final class ServerApp {
   private static void openWindow(int port) {
     Clock clock = Clock.system(ZONE);
     SqliteStore store = SqliteStore.openFile(DATABASE_FILE);
-    seedAdmin(store, clock.instant());
+    prepare(store, clock.instant());
 
     SwingUtilities.invokeLater(() -> new ServerWindow(store, clock, port).setVisible(true));
   }
@@ -99,6 +99,15 @@ public final class ServerApp {
 
   private static void report(ProtocolException failure) {
     Diagnostics.report(log, failure);
+  }
+
+  private static void prepare(SqliteStore store, Instant now) {
+    int ended = Bootstrap.endPreviousSessions(store);
+    if (ended > 0) {
+      log.info("{} sessao(oes) da execucao anterior encerrada(s)", ended);
+    }
+
+    seedAdmin(store, now);
   }
 
   private static void seedAdmin(SqliteStore store, Instant now) {

@@ -28,6 +28,18 @@ class BootstrapTest {
     assertEquals("admin", response.get(Fields.ROLE).getAsString());
   }
 
+  // Cliente fechado sem logout não prende a conta depois que o servidor reinicia
+  @Test
+  void endsThePreviousRunsSessionsSoTheNextLoginWorks() {
+    SqliteStore store = SqliteStore.openInMemory();
+    Bootstrap.seedAdmin(store, T0);
+    JsonObject login = TestJson.object("{'op':'login','email':'admin@admin.com','password':'admin'}");
+    assertStatus("200", AuthHandlers.login(login, Fixtures.context(store)));
+
+    assertEquals(1, Bootstrap.endPreviousSessions(store));
+    assertStatus("200", AuthHandlers.login(login, Fixtures.context(store)));
+  }
+
   @Test
   void leavesAnAccountInTheWayAlone() {
     SqliteStore store = SqliteStore.openInMemory();
