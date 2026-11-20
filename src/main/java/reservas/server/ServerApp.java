@@ -73,6 +73,7 @@ public final class ServerApp {
     AccountHandlers.install(dispatcher);
     AdminHandlers.install(dispatcher);
     RoomHandlers.install(dispatcher);
+    ReservationHandlers.install(dispatcher);
   }
 
   private static void report(ProtocolException failure) {

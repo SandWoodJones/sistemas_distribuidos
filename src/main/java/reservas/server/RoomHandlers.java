@@ -122,11 +122,11 @@ public final class RoomHandlers {
     return new RoomChanges(name, capacity, location, resources, status, slots);
   }
 
-  private static long roomId(Request request) {
+  static long roomId(Request request) {
     return Long.parseLong(request.required(Fields.ROOM_ID, Formats.ID));
   }
 
-  private static Room findRoom(SqliteStore store, long id) {
+  static Room findRoom(SqliteStore store, long id) {
     return store.findRoom(id)
         .orElseThrow(() -> ProtocolException.notFound(ROOM_NOT_FOUND, "room_id " + id + " nao cadastrado"));
   }

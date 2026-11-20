@@ -3,6 +3,7 @@ package reservas.server;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -15,6 +16,8 @@ import org.junit.jupiter.api.Timeout;
 
 import reservas.protocol.TestJson;
 import reservas.protocol.ProtocolException;
+import reservas.protocol.Role;
+import reservas.protocol.Slot;
 import reservas.protocol.Status;
 
 @Timeout(20)
@@ -111,5 +114,44 @@ class StoreConcurrencyTest {
     assertTrue(failures.isEmpty(), failures.toString());
     assertEquals(1, created.get());
     assertEquals(THREADS - 1, conflicts.get());
+  }
+
+  // Vinte usuários reservando a mesma sala e horário: um 201 e dezenove 409
+  @Test
+  void letsExactlyOneReservationWinTheSameSlot() throws InterruptedException {
+    Room room = store.createRoom("Sala B12", 12, "Bloco B", List.of(), List.of(Slot.fromWire("3T1").orElseThrow()))
+        .orElseThrow();
+    AtomicInteger created = new AtomicInteger();
+    AtomicInteger conflicts = new AtomicInteger();
+
+    List<Runnable> work = new ArrayList<>();
+    for (int i = 0; i < THREADS; i++) {
+      String token = String.format("%064x", i);
+      User user = store.createUser(name(i), name(i) + "@email.com", "senha123", Role.USER, Fixtures.T0)
+          .orElseThrow();
+      store.createSession(token, user.id(), Fixtures.T0).orElseThrow();
+
+      work.add(() -> {
+        try {
+          ReservationHandlers.createReservation(TestJson.object("{'op':'create_reservation','token':'" + token
+              + "','room_id':'" + room.id() + "','date':'2026-09-15','start_time':'13:00','end_time':'13:50',"
+              + "'topic':'Aula','participants':'6'}"), context);
+          created.incrementAndGet();
+        } catch (ProtocolException e) {
+          if (e.status() != Status.CONFLICT) {
+            throw e;
+          }
+
+          conflicts.incrementAndGet();
+        }
+      });
+    }
+
+    race(work);
+
+    assertTrue(failures.isEmpty(), failures.toString());
+    assertEquals(1, created.get());
+    assertEquals(THREADS - 1, conflicts.get());
+    assertEquals(1, store.listReservationsOn(room.id(), LocalDate.parse("2026-09-15")).size());
   }
 }

@@ -9,7 +9,7 @@ import reservas.protocol.Fields;
 
 // Campos de um usuário nas respostas
 final class UserViews {
-  private static final DateTimeFormatter CREATED_AT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+  static final DateTimeFormatter CREATED_AT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
   private UserViews() {
 

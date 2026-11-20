@@ -3,8 +3,11 @@ package reservas.server;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.LocalTime;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.Supplier;
 
 import com.google.gson.JsonParser;
 
@@ -14,11 +17,13 @@ import reservas.protocol.Role;
 import reservas.protocol.RoomStatus;
 import reservas.protocol.Slot;
 import reservas.protocol.StringArrays;
+import reservas.protocol.TimeWindow;
 
 // Persistência, toda operação que pode conflitar decide o conflito aqui e devolve `Optional` vazio; quem chama traduz para 409.
 // Guarda uma conexão pela vida inteira
 public final class SqliteStore implements AutoCloseable {
   private final Database database;
+  private final RoomLocks roomLocks = new RoomLocks();
 
   private SqliteStore(Database database) {
     this.database = database;
@@ -93,7 +98,7 @@ public final class SqliteStore implements AutoCloseable {
     return sameName.isPresent() && sameName.get().id() != user.id();
   }
 
-  // A sessão cai junto por `ON DELETE CASCADE`
+  // A sessão e as reservas caem junto por `ON DELETE CASCADE`
   public void deleteUser(long id) {
     database.update("DELETE FROM users WHERE id = ?", id);
   }
@@ -195,6 +200,33 @@ public final class SqliteStore implements AutoCloseable {
     database.update("DELETE FROM rooms WHERE id = ?", id);
   }
 
+  // Checar e gravar na mesma sala
+  public <T> T withRoomLock(long roomId, Supplier<T> work) {
+    return roomLocks.holding(roomId, work);
+  }
+
+  public Optional<Reservation> findReservation(long id) {
+    return database.queryOne("SELECT * FROM reservations WHERE id = ?", SqliteStore::toReservation, id);
+  }
+
+  public List<Reservation> listReservationsOn(long roomId, LocalDate date) {
+    return database.queryList("SELECT * FROM reservations WHERE room_id = ? AND date = ? ORDER BY start_time",
+        SqliteStore::toReservation, roomId, date.toString());
+  }
+
+  public Reservation createReservation(Booking booking, long userId, Instant createdAt) {
+    TimeWindow window = booking.window();
+    long id = database.insert(
+        "INSERT INTO reservations (room_id, user_id, date, start_time, end_time, topic, participants, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        booking.roomId(), userId, window.date().toString(), window.start().toString(), window.end().toString(),
+        booking.topic(), booking.participants(), createdAt.toString());
+    return new Reservation(id, booking.roomId(), userId, window, booking.topic(), booking.participants(), createdAt);
+  }
+
+  public void deleteReservation(long id) {
+    database.update("DELETE FROM reservations WHERE id = ?", id);
+  }
+
   @Override
   public synchronized void close() {
     database.close();
@@ -216,6 +248,13 @@ public final class SqliteStore implements AutoCloseable {
         fromJson(row.getString("resources")),
         RoomStatus.fromWire(status).orElseThrow(() -> corrupt("rooms.status", status)),
         slotsFromJson(row.getString("slots")));
+  }
+
+  private static Reservation toReservation(ResultSet row) throws SQLException {
+    TimeWindow window = new TimeWindow(LocalDate.parse(row.getString("date")),
+        LocalTime.parse(row.getString("start_time")), LocalTime.parse(row.getString("end_time")));
+    return new Reservation(row.getLong("id"), row.getLong("room_id"), row.getLong("user_id"), window,
+        row.getString("topic"), row.getInt("participants"), Instant.parse(row.getString("created_at")));
   }
 
   private static String slotsToJson(List<Slot> slots) {

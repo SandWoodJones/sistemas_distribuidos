@@ -1,6 +1,7 @@
 package reservas.protocol;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
@@ -65,6 +66,22 @@ public final class Request {
     }
 
     return Optional.of(window(date.orElseThrow(), start.orElseThrow(), end.orElseThrow()));
+  }
+
+  public TimeWindow window() {
+    LocalDate date = calendarDate(Fields.DATE, required(Fields.DATE, Formats.DATE));
+    LocalTime start = LocalTime.parse(required(Fields.START_TIME, Formats.START_TIME));
+    LocalTime end = LocalTime.parse(required(Fields.END_TIME, Formats.END_TIME));
+    return window(date, start, end);
+  }
+
+  public TimeWindow upcomingWindow(LocalDateTime now) {
+    TimeWindow window = window();
+    if (!window.startsAt().isAfter(now)) {
+      throw invalid(Fields.START_TIME, "inicio " + window.startsAt() + " ja passou, agora e " + now);
+    }
+
+    return window;
   }
 
   public List<String> resources() {

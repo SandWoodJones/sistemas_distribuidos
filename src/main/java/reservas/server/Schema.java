@@ -34,6 +34,19 @@ final class Schema {
         status    TEXT NOT NULL,
         slots     TEXT NOT NULL
       )
+      """,
+      """
+      CREATE TABLE IF NOT EXISTS reservations (
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        room_id      INTEGER NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
+        user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        date         TEXT NOT NULL,
+        start_time   TEXT NOT NULL,
+        end_time     TEXT NOT NULL,
+        topic        TEXT NOT NULL,
+        participants INTEGER NOT NULL,
+        created_at   TEXT NOT NULL
+      )
       """
   };
 }
