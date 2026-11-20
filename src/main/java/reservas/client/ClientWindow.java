@@ -6,12 +6,16 @@ import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.Font;
 import java.io.IOException;
+import java.time.LocalTime;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.function.Consumer;
+import java.util.function.Function;
+import java.util.stream.Stream;
 
 import javax.swing.BorderFactory;
 import javax.swing.Box;
@@ -34,6 +38,7 @@ import javax.swing.SwingUtilities;
 
 import com.google.gson.JsonObject;
 
+import reservas.protocol.ClassPeriod;
 import reservas.protocol.Fields;
 
 // Janela do cliente
@@ -95,6 +100,8 @@ public final class ClientWindow extends JFrame {
     tabs.addTab("Salas", roomsTab());
     tabs.addTab("Nova sala", newRoomTab());
     tabs.addTab("Editar sala", editRoomTab());
+    tabs.addTab("Reservar", bookTab());
+    tabs.addTab("Reservas", reservationsTab());
     return tabs;
   }
 
@@ -208,6 +215,62 @@ public final class ClientWindow extends JFrame {
     form.button("Remover sala", () -> session.deleteRoom(text(id)));
 
     return form.panel();
+  }
+
+  private JPanel bookTab() {
+    Form form = new Form();
+    JTextField room = form.field("ID da sala");
+    JTextField date = form.field("Data");
+    form.button("Ver horarios do dia", () -> session.readRoom(text(room), text(date)));
+    form.separator();
+
+    JComboBox<String> start = form.choice("Inicio", classBoundaries(ClassPeriod::start));
+    JComboBox<String> end = form.choice("Fim", classBoundaries(ClassPeriod::end));
+    form.button("Verificar disponibilidade",
+        () -> session.checkAvailability(text(room), text(date), selected(start), selected(end)));
+    form.separator();
+
+    JTextField topic = form.field("Assunto");
+    JTextField participants = form.field("Participantes");
+    form.button("Reservar", () -> session.createReservation(text(room), text(date),
+        new ReservationFields(selected(start), selected(end), text(topic), text(participants))));
+
+    return form.panel();
+  }
+
+  private JPanel reservationsTab() {
+    Form form = new Form();
+    JComboBox<String> scope = form.choice("Quais", Fields.SCOPE_MINE, Fields.SCOPE_ALL);
+    JTextField date = form.field("Data");
+    JTextField room = form.field("ID da sala");
+    form.button("Listar reservas", () -> session.listReservations(selected(scope), text(date), text(room)));
+    form.separator();
+
+    JTextField id = form.field("ID da reserva");
+    form.button("Ler reserva", () -> session.readReservation(text(id)));
+    form.separator();
+
+    JComboBox<String> start = form.choice("Novo inicio", keepOr(classBoundaries(ClassPeriod::start)));
+    JComboBox<String> end = form.choice("Novo fim", keepOr(classBoundaries(ClassPeriod::end)));
+    JTextField topic = form.field("Novo assunto");
+    JTextField participants = form.field("Participantes");
+    form.button("Atualizar reserva", () -> session.updateReservation(text(id),
+        new ReservationFields(selected(start), selected(end), text(topic), text(participants))));
+    form.separator();
+
+    form.button("Cancelar reserva", () -> session.deleteReservation(text(id)));
+
+    return form.panel();
+  }
+
+  // Início ou fim de cada aula da tabela da UTFPR
+  private static String[] classBoundaries(Function<ClassPeriod, LocalTime> boundary) {
+    return Arrays.stream(ClassPeriod.values()).map(boundary).map(LocalTime::toString).toArray(String[]::new);
+  }
+
+  // Opção vazia primeiro: mantém o valor atual
+  private static String[] keepOr(String[] options) {
+    return Stream.concat(Stream.of(""), Arrays.stream(options)).toArray(String[]::new);
   }
 
   private JSplitPane output() {

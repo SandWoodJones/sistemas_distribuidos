@@ -145,6 +145,48 @@ public final class Session implements AutoCloseable {
     return client.ask(onRoom(Op.DELETE_ROOM, roomId));
   }
 
+  public JsonObject checkAvailability(String roomId, String date, String startTime, String endTime)
+      throws IOException {
+    JsonObject request = onRoom(Op.CHECK_AVAILABILITY, roomId);
+    request.addProperty(Fields.DATE, date);
+    request.addProperty(Fields.START_TIME, startTime);
+    request.addProperty(Fields.END_TIME, endTime);
+
+    return client.ask(request);
+  }
+
+  public JsonObject createReservation(String roomId, String date, ReservationFields reservation) throws IOException {
+    JsonObject request = onRoom(Op.CREATE_RESERVATION, roomId);
+    request.addProperty(Fields.DATE, date);
+    addReservation(request, reservation);
+
+    return client.ask(request);
+  }
+
+  public JsonObject listReservations(String scope, String date, String roomId) throws IOException {
+    JsonObject request = authenticated(Op.LIST_RESERVATIONS);
+    addUnlessBlank(request, Fields.SCOPE, scope);
+    addUnlessBlank(request, Fields.DATE, date);
+    addUnlessBlank(request, Fields.ROOM_ID, roomId);
+
+    return client.ask(request);
+  }
+
+  public JsonObject readReservation(String reservationId) throws IOException {
+    return client.ask(onReservation(Op.READ_RESERVATION, reservationId));
+  }
+
+  public JsonObject updateReservation(String reservationId, ReservationFields changes) throws IOException {
+    JsonObject request = onReservation(Op.UPDATE_RESERVATION, reservationId);
+    addReservation(request, changes);
+
+    return client.ask(request);
+  }
+
+  public JsonObject deleteReservation(String reservationId) throws IOException {
+    return client.ask(onReservation(Op.DELETE_RESERVATION, reservationId));
+  }
+
   @Override
   public void close() throws IOException {
     forget();
@@ -179,6 +221,19 @@ public final class Session implements AutoCloseable {
     JsonObject request = authenticated(op);
     request.addProperty(Fields.ROOM_ID, roomId);
     return request;
+  }
+
+  private JsonObject onReservation(Op op, String reservationId) {
+    JsonObject request = authenticated(op);
+    request.addProperty(Fields.RESERVATION_ID, reservationId);
+    return request;
+  }
+
+  private static void addReservation(JsonObject request, ReservationFields reservation) {
+    request.addProperty(Fields.START_TIME, reservation.startTime());
+    request.addProperty(Fields.END_TIME, reservation.endTime());
+    request.addProperty(Fields.TOPIC, reservation.topic());
+    request.addProperty(Fields.PARTICIPANTS, reservation.participants());
   }
 
   private static void addRoom(JsonObject request, RoomFields room) {

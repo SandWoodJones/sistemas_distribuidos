@@ -150,4 +150,33 @@ class SessionTest {
     assertStatus("200", session.deleteRoom(id));
     assertStatus("404", session.readRoom(id, ""));
   }
+
+  @Test
+  void sendsTheReservationOpsAndKeepsWhatIsLeftBlank() throws IOException {
+    Bootstrap.seedAdmin(server.store(), T0);
+    session.login(Bootstrap.ADMIN_EMAIL, Bootstrap.ADMIN_PASSWORD);
+    String room = session.createRoom(new RoomFields("Sala B12", "12", "Bloco B", List.of(), List.of("3T1", "3T2")))
+        .get(Fields.ROOM_ID).getAsString();
+
+    JsonObject free = session.checkAvailability(room, "2026-09-15", "13:00", "14:40");
+    assertEquals("true", free.get(Fields.AVAILABLE).getAsString());
+
+    JsonObject created = session.createReservation(room, "2026-09-15",
+        new ReservationFields("13:00", "13:50", "Reuniao", "6"));
+    assertStatus("201", created);
+    String id = created.get(Fields.RESERVATION_ID).getAsString();
+
+    assertEquals("1", session.listReservations("mine", "", "").get(Fields.COUNT).getAsString());
+    assertTrue(traffic.stream().noneMatch(line -> line.contains("list_reservations\"") && line.contains("\"date\"")),
+        traffic.toString());
+
+    assertStatus("200", session.updateReservation(id, new ReservationFields("", "14:40", "", "")));
+    JsonObject read = session.readReservation(id);
+    assertEquals("13:00", read.get(Fields.START_TIME).getAsString());
+    assertEquals("14:40", read.get(Fields.END_TIME).getAsString());
+    assertEquals("Reuniao", read.get(Fields.TOPIC).getAsString());
+
+    assertStatus("200", session.deleteReservation(id));
+    assertStatus("404", session.readReservation(id));
+  }
 }
