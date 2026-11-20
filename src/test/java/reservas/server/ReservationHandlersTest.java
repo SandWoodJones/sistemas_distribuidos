@@ -91,6 +91,12 @@ class ReservationHandlersTest {
     return reported.get(reported.size() - 1).getMessage();
   }
 
+  private Reservation endedLastTuesday(int participants) {
+    TimeWindow lastTuesday = new TimeWindow(LocalDate.parse("2026-09-08"), LocalTime.parse("13:00"),
+        LocalTime.parse("14:40"));
+    return store.createReservation(new Booking(b12.id(), lastTuesday, "Aula", participants), joao.id(), T0);
+  }
+
   @Test
   void createReservationAnswersTheNewIdAndTheOwnerReadsItBack() {
     JsonObject created = reserve(JOAO, T1_T2);
@@ -368,9 +374,7 @@ class ReservationHandlersTest {
 
   @Test
   void updateReservationRejectsOneThatHasEnded() {
-    TimeWindow lastTuesday = new TimeWindow(LocalDate.parse("2026-09-08"), LocalTime.parse("13:00"),
-        LocalTime.parse("14:40"));
-    Reservation ended = store.createReservation(new Booking(b12.id(), lastTuesday, "Aula", 6), joao.id(), T0);
+    Reservation ended = endedLastTuesday(6);
 
     assertResponse("update_reservation_response", "409", "Reserva ja encerrada",
         update(JOAO, Long.toString(ended.id()), "", "", "Outra aula", ""));
@@ -457,13 +461,49 @@ class ReservationHandlersTest {
 
   @Test
   void deleteReservationRejectsOneThatHasEnded() {
-    TimeWindow lastTuesday = new TimeWindow(LocalDate.parse("2026-09-08"), LocalTime.parse("13:00"),
-        LocalTime.parse("14:40"));
-    Reservation ended = store.createReservation(new Booking(b12.id(), lastTuesday, "Aula", 6), joao.id(), T0);
+    Reservation ended = endedLastTuesday(6);
 
     assertResponse("delete_reservation_response", "409", "Reserva ja encerrada",
         handle("delete_reservation", JOAO, reservationId(Long.toString(ended.id()))));
     assertTrue(store.findReservation(ended.id()).isPresent());
+  }
+
+  @Test
+  void deleteRoomRefusesARoomWithActiveReservations() {
+    reservedId(JOAO, T1_T2);
+
+    assertResponse("delete_room_response", "409", "Sala possui reservas ativas",
+        handle("delete_room", ADMIN, ",'room_id':'" + b12.id() + "'"));
+    assertTrue(store.findRoom(b12.id()).isPresent());
+  }
+
+  @Test
+  void deleteRoomTakesItsEndedReservationsAlong() {
+    Reservation ended = endedLastTuesday(6);
+
+    assertStatus("200", handle("delete_room", ADMIN, ",'room_id':'" + b12.id() + "'"));
+    assertTrue(store.findReservation(ended.id()).isEmpty());
+  }
+
+  // Reserva encerrada não segura a capacidade
+  @Test
+  void updateRoomKeepsTheCapacityAboveActiveReservations() {
+    endedLastTuesday(12);
+    reservedId(JOAO, T1_T2);
+    String room = ",'room_id':'" + b12.id() + "'";
+
+    assertResponse("update_room_response", "409", "Capacidade menor que participantes de reservas ativas",
+        handle("update_room", ADMIN, room + ",'capacity':'5'"));
+    assertStatus("200", handle("update_room", ADMIN, room + ",'capacity':'6'"));
+  }
+
+  @Test
+  void updateRoomReportsATakenNameBeforeTheCapacity() {
+    store.createRoom("Lab 3", 30, "Bloco C", List.of(), List.of(slot("2M1"))).orElseThrow();
+    reservedId(JOAO, T1_T2);
+
+    assertResponse("update_room_response", "409", "Sala ja cadastrada",
+        handle("update_room", ADMIN, ",'room_id':'" + b12.id() + "','name':'Lab 3','capacity':'5'"));
   }
 
   @Test

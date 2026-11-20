@@ -1,6 +1,7 @@
 package reservas.server;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -23,6 +24,8 @@ public final class RoomHandlers {
   static final String FILTERS_BAD_REQUEST = "Filtros em formato invalido";
   static final String ROOM_NOT_FOUND = "Sala nao encontrada";
   static final String NAME_IN_USE = "Sala ja cadastrada";
+  static final String BELOW_ACTIVE_PARTICIPANTS = "Capacidade menor que participantes de reservas ativas";
+  static final String HAS_ACTIVE_RESERVATIONS = "Sala possui reservas ativas";
 
   private static final int ANY_CAPACITY = 1;
 
@@ -92,15 +95,13 @@ public final class RoomHandlers {
     Caller.authenticate(request, context).requireAdmin();
 
     SqliteStore store = context.store();
-    findRoom(store, id);
-    if (!store.updateRoom(id, changes)) {
-      throw nameInUse(changes.name());
-    }
+    LocalDateTime now = LocalDateTime.now(context.clock());
+    store.withRoomLock(id, () -> update(store, id, changes, now));
 
     return Responses.of(Op.UPDATE_ROOM, Status.OK, "Sala atualizada com sucesso");
   }
 
-  // Sala com reservas futuras é 409
+  // Apaga junto as reservas encerradas
   static JsonObject deleteRoom(JsonObject json, ServerContext context) {
     Request request = new Request(json, Messages.DATA_BAD_REQUEST);
     long id = roomId(request);
@@ -108,9 +109,57 @@ public final class RoomHandlers {
     Caller.authenticate(request, context).requireAdmin();
 
     SqliteStore store = context.store();
-    findRoom(store, id);
-    store.deleteRoom(id);
+    LocalDateTime now = LocalDateTime.now(context.clock());
+    store.withRoomLock(id, () -> remove(store, id, now));
+
     return Responses.of(Op.DELETE_ROOM, Status.OK, "Sala removida com sucesso");
+  }
+
+  // Roda sob o lock da sala: nenhuma reserva entra entre checar e gravar. Nome antes de capacidade
+  private static Room update(SqliteStore store, long id, RoomChanges changes, LocalDateTime now) {
+    Room updated = findRoom(store, id).with(changes);
+    requireNameFree(store, updated);
+    requireRoomForActive(updated, activeReservations(store, id, now));
+
+    // O nome é checado de novo no store, sob o lock dele: duas salas diferentes podem pedir o mesmo nome
+    if (!store.updateRoom(id, changes)) {
+      throw nameInUse(updated.name());
+    }
+
+    return updated;
+  }
+
+  private static Room remove(SqliteStore store, long id, LocalDateTime now) {
+    Room room = findRoom(store, id);
+    List<Reservation> active = activeReservations(store, id, now);
+    if (!active.isEmpty()) {
+      throw ProtocolException.conflict(HAS_ACTIVE_RESERVATIONS,
+          "sala " + id + " tem " + active.size() + " reserva(s) ativa(s), a primeira " + active.get(0).id());
+    }
+
+    store.deleteRoom(id);
+    return room;
+  }
+
+  private static void requireNameFree(SqliteStore store, Room room) {
+    Optional<Room> sameName = store.findRoomByName(room.name());
+    if (sameName.isPresent() && sameName.get().id() != room.id()) {
+      throw nameInUse(room.name());
+    }
+  }
+
+  private static void requireRoomForActive(Room room, List<Reservation> active) {
+    for (Reservation reservation : active) {
+      if (reservation.participants() > room.capacity()) {
+        throw ProtocolException.conflict(BELOW_ACTIVE_PARTICIPANTS, "capacity " + room.capacity() + " abaixo dos "
+            + reservation.participants() + " participantes da reserva " + reservation.id());
+      }
+    }
+  }
+
+  private static List<Reservation> activeReservations(SqliteStore store, long roomId, LocalDateTime now) {
+    return store.listReservations(new ReservationFilter(null, null, roomId)).stream()
+        .filter(reservation -> !reservation.isOverAt(now)).toList();
   }
 
   private static RoomChanges changes(Request request) {
