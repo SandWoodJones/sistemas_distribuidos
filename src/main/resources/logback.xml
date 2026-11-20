@@ -24,8 +24,16 @@
     </encoder>
   </appender>
 
+  <!-- Painel de mensagens da janela do servidor -->
+  <appender name="PANE" class="reservas.server.LogPaneAppender">
+    <layout class="ch.qos.logback.classic.PatternLayout">
+      <pattern>${PATTERN}</pattern>
+    </layout>
+  </appender>
+
   <root level="INFO">
     <appender-ref ref="CONSOLE"/>
     <appender-ref ref="FILE"/>
+    <appender-ref ref="PANE"/>
   </root>
 </configuration>

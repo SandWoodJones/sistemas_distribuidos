@@ -146,6 +146,13 @@ public final class SqliteStore implements AutoCloseable {
     return Optional.of(new Session(token, userId, now));
   }
 
+  // Sessões que ainda não expiraram, por nome
+  public List<LoggedInUser> listLoggedIn(Instant now) {
+    return database.queryList("SELECT users.name, users.role, sessions.* FROM sessions "
+        + "JOIN users ON users.id = sessions.user_id ORDER BY users.name", SqliteStore::toLoggedIn).stream()
+        .filter(user -> !user.session().isExpiredAt(now)).toList();
+  }
+
   public void deleteSession(String token) {
     database.update("DELETE FROM sessions WHERE token = ?", token);
   }
@@ -254,6 +261,12 @@ public final class SqliteStore implements AutoCloseable {
 
   private static Session toSession(ResultSet row) throws SQLException {
     return new Session(row.getString("token"), row.getLong("user_id"), Instant.parse(row.getString("last_used")));
+  }
+
+  private static LoggedInUser toLoggedIn(ResultSet row) throws SQLException {
+    String role = row.getString("role");
+    return new LoggedInUser(row.getString("name"), Role.fromWire(role).orElseThrow(() -> corrupt("users.role", role)),
+        toSession(row));
   }
 
   private static Room toRoom(ResultSet row) throws SQLException {

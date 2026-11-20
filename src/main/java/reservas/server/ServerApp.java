@@ -1,10 +1,13 @@
 package reservas.server;
 
+import java.awt.GraphicsEnvironment;
 import java.io.IOException;
 import java.net.BindException;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneId;
+
+import javax.swing.SwingUtilities;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -33,6 +36,15 @@ public final class ServerApp {
       return;
     }
 
+    if (GraphicsEnvironment.isHeadless()) {
+      serveFromTerminal(port);
+    } else {
+      openWindow(port);
+    }
+  }
+
+  // Sem tela: escuta na porta do argumento até o processo ser morto
+  private static void serveFromTerminal(int port) {
     try {
       serve(port);
     } catch (BindException e) {
@@ -54,6 +66,15 @@ public final class ServerApp {
         server.acceptForever();
       }
     }
+  }
+
+  // A janela escolhe a porta; o argumento só preenche o campo
+  private static void openWindow(int port) {
+    Clock clock = Clock.system(ZONE);
+    SqliteStore store = SqliteStore.openFile(DATABASE_FILE);
+    seedAdmin(store, clock.instant());
+
+    SwingUtilities.invokeLater(() -> new ServerWindow(store, clock, port).setVisible(true));
   }
 
   private static void fail(String reason) {
@@ -93,19 +114,19 @@ public final class ServerApp {
   }
 
   private static int port(String[] args) {
-    if (args.length == 0) {
-      return DEFAULT_PORT;
-    }
+    return args.length == 0 ? DEFAULT_PORT : parsePort(args[0]);
+  }
 
+  static int parsePort(String text) {
     int port;
     try {
-      port = Integer.parseInt(args[0]);
+      port = Integer.parseInt(text);
     } catch (NumberFormatException e) {
-      throw invalidPort(args[0]);
+      throw invalidPort(text);
     }
 
     if (port < 1 || port > 65535) {
-      throw invalidPort(args[0]);
+      throw invalidPort(text);
     }
 
     return port;
