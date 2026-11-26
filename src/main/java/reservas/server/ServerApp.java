@@ -108,6 +108,11 @@ public final class ServerApp {
     }
 
     seedAdmin(store, now);
+    if (Bootstrap.seedDemo(store, now)) {
+      log.info("pre-cadastro: {} laboratorios com todos os horarios e {} usuarios ({} a {}, senha {})",
+          Bootstrap.DEMO_LABS, Bootstrap.DEMO_USERS, Bootstrap.demoUserName(0),
+          Bootstrap.demoUserName(Bootstrap.DEMO_USERS - 1), Bootstrap.DEMO_PASSWORD);
+    }
   }
 
   private static void seedAdmin(SqliteStore store, Instant now) {

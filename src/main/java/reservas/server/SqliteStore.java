@@ -218,6 +218,11 @@ public final class SqliteStore implements AutoCloseable {
     return roomLocks.holding(roomId, work);
   }
 
+  // Troca de sala: as duas salas travadas, em ordem crescente de id
+  public <T> T withRoomLocks(long roomId, long otherRoomId, Supplier<T> work) {
+    return roomLocks.holdingBoth(roomId, otherRoomId, work);
+  }
+
   public Optional<Reservation> findReservation(long id) {
     return database.queryOne("SELECT * FROM reservations WHERE id = ?", SqliteStore::toReservation, id);
   }
@@ -244,9 +249,9 @@ public final class SqliteStore implements AutoCloseable {
 
   public void updateReservation(Reservation reservation) {
     TimeWindow window = reservation.window();
-    database.update("UPDATE reservations SET start_time = ?, end_time = ?, topic = ?, participants = ? WHERE id = ?",
-        window.start().toString(), window.end().toString(), reservation.topic(), reservation.participants(),
-        reservation.id());
+    database.update("UPDATE reservations SET room_id = ?, date = ?, start_time = ?, end_time = ?, topic = ?, "
+        + "participants = ? WHERE id = ?", reservation.roomId(), window.date().toString(), window.start().toString(),
+        window.end().toString(), reservation.topic(), reservation.participants(), reservation.id());
   }
 
   public void deleteReservation(long id) {

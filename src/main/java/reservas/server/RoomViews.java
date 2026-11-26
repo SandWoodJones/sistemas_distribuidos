@@ -37,13 +37,23 @@ final class RoomViews {
   }
 
   static JsonObject withAgenda(Room room, LocalDate date, List<AgendaBooking> bookings) {
-    JsonArray agenda = new JsonArray();
-    room.slotsOn(date.getDayOfWeek()).forEach(slot -> agenda.add(agendaItem(room, date, slot, bookings)));
-
     JsonObject view = details(room);
     view.addProperty(Fields.DATE, date.toString());
-    view.add(Fields.AGENDA, agenda);
+    view.add(Fields.AGENDA, agenda(room, date, bookings));
     return view;
+  }
+
+  // Item de `rooms` no `read_room` sem `room_id`: a data vai uma vez só, fora da lista
+  static JsonObject withDayAgenda(Room room, LocalDate date, List<AgendaBooking> bookings) {
+    JsonObject view = details(room);
+    view.add(Fields.AGENDA, agenda(room, date, bookings));
+    return view;
+  }
+
+  private static JsonArray agenda(Room room, LocalDate date, List<AgendaBooking> bookings) {
+    JsonArray agenda = new JsonArray();
+    room.slotsOn(date.getDayOfWeek()).forEach(slot -> agenda.add(agendaItem(room, date, slot, bookings)));
+    return agenda;
   }
 
   private static JsonObject agendaItem(Room room, LocalDate date, Slot slot, List<AgendaBooking> bookings) {

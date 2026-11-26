@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -18,6 +19,7 @@ import reservas.protocol.TestJson;
 import reservas.protocol.ProtocolException;
 import reservas.protocol.Role;
 import reservas.protocol.Slot;
+import reservas.protocol.TimeWindow;
 import reservas.protocol.Status;
 
 @Timeout(20)
@@ -153,5 +155,45 @@ class StoreConcurrencyTest {
     assertEquals(1, created.get());
     assertEquals(THREADS - 1, conflicts.get());
     assertEquals(1, store.listReservationsOn(room.id(), LocalDate.parse("2026-09-15")).size());
+  }
+
+  // Trocas de sala em sentidos opostos (A para B e B para A) ao mesmo tempo: com os locks em ordem de id, ninguém
+  // trava; o @Timeout derruba o teste se travar
+  @Test
+  void opposingRoomSwapsDoNotDeadlock() throws InterruptedException {
+    List<Slot> tuesday = List.of(Slot.fromWire("3T1").orElseThrow(), Slot.fromWire("3T2").orElseThrow());
+    long roomA = store.createRoom("Sala A", 12, "Bloco A", List.of(), tuesday).orElseThrow().id();
+    long roomB = store.createRoom("Sala B", 12, "Bloco B", List.of(), tuesday).orElseThrow().id();
+
+    List<Runnable> work = new ArrayList<>();
+    String[][] swaps = { { "13:00", "13:50" }, { "13:50", "14:40" } };
+    for (int i = 0; i < swaps.length; i++) {
+      String token = String.format("%064x", i);
+      User user = store.createUser(name(i), name(i) + "@email.com", "senha123", Role.USER, Fixtures.T0)
+          .orElseThrow();
+      store.createSession(token, user.id(), Fixtures.T0).orElseThrow();
+      long home = i == 0 ? roomA : roomB;
+      long away = i == 0 ? roomB : roomA;
+      TimeWindow window = new TimeWindow(LocalDate.parse("2026-09-15"), LocalTime.parse(swaps[i][0]),
+          LocalTime.parse(swaps[i][1]));
+      long id = store.createReservation(new Booking(home, window, "Aula", 6), user.id(), Fixtures.T0).id();
+
+      work.add(() -> {
+        for (int round = 0; round < 50; round++) {
+          move(token, id, round % 2 == 0 ? away : home);
+        }
+      });
+    }
+
+    race(work);
+
+    assertTrue(failures.isEmpty(), failures.toString());
+    assertEquals(2, store.listReservations(new ReservationFilter(null, LocalDate.parse("2026-09-15"), null)).size());
+  }
+
+  private void move(String token, long reservationId, long roomId) {
+    ReservationHandlers.updateReservation(TestJson.object("{'op':'update_reservation','token':'" + token
+        + "','reservation_id':'" + reservationId + "','room_id':'" + roomId
+        + "','start_time':'','end_time':'','topic':'','participants':''}"), context);
   }
 }

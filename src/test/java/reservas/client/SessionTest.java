@@ -183,11 +183,20 @@ class SessionTest {
     assertTrue(traffic.stream().noneMatch(line -> line.contains("list_reservations\"") && line.contains("\"date\"")),
         traffic.toString());
 
-    assertStatus("200", session.updateReservation(id, new ReservationFields("", "14:40", "", "")));
+    assertStatus("200", session.updateReservation(id, "", "", new ReservationFields("", "14:40", "", "")));
+    assertTrue(traffic.stream().noneMatch(line -> line.contains("update_reservation\"") && line.contains("\"date\"")),
+        traffic.toString());
     JsonObject read = session.readReservation(id);
     assertEquals("13:00", read.get(Fields.START_TIME).getAsString());
     assertEquals("14:40", read.get(Fields.END_TIME).getAsString());
     assertEquals("Reuniao", read.get(Fields.TOPIC).getAsString());
+
+    assertStatus("200", session.updateReservation(id, "", "2026-09-22", new ReservationFields("", "", "", "")));
+    assertEquals("2026-09-22", session.readReservation(id).get(Fields.DATE).getAsString());
+
+    JsonObject rooms = session.readRooms("2026-09-22");
+    assertEquals("1", rooms.get(Fields.COUNT).getAsString());
+    assertEquals(2, rooms.getAsJsonArray(Fields.ROOMS).get(0).getAsJsonObject().getAsJsonArray(Fields.AGENDA).size());
 
     assertStatus("200", session.deleteReservation(id));
     assertStatus("404", session.readReservation(id));

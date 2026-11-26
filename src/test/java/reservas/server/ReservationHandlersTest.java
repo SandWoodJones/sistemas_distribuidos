@@ -339,8 +339,10 @@ class ReservationHandlersTest {
     String keep = ",'start_time':'','end_time':'','topic':'','participants':'8'";
     String[][] cases = {
         { "reservation_id", ",'reservation_id':''" + keep },
-        { "room_id", reservationId(id) + ",'room_id':'" + b12.id() + "'" + keep },
-        { "date", reservationId(id) + ",'date':'2026-09-15'" + keep },
+        { "room_id", reservationId(id) + ",'room_id':'B12'" + keep },
+        { "room_id", reservationId(id) + ",'room_id':null" + keep },
+        { "date", reservationId(id) + ",'date':'2026-02-30'" + keep },
+        { "date", reservationId(id) + ",'date':'15/09/2026'" + keep },
         { "start_time", reservationId(id) + ",'start_time':'13:10','end_time':'','topic':'','participants':''" },
         { "start_time", reservationId(id) + ",'start_time':null,'end_time':'','topic':'','participants':'8'" },
         { "end_time", reservationId(id) + ",'start_time':'','end_time':'13:00','topic':'','participants':''" },
@@ -405,6 +407,87 @@ class ReservationHandlersTest {
     assertResponse("update_reservation_response", "400", "Dados da reserva em formato invalido",
         update(JOAO, ongoing, "13:00", "", "", ""));
     assertTrue(lastDiagnosis().contains("campo 'start_time'"), lastDiagnosis());
+  }
+
+  // Alterar não encerra reserva: o fim resultante no passado é 400, mas encurtar até uma aula que não terminou vale
+  @Test
+  void updateReservationRejectsAnEndInThePastButLetsAnOngoingOneShrink() {
+    store.updateRoom(b12.id(), new RoomChanges(null, null, null, null, null,
+        List.of(slot("4T1"), slot("4T2"), slot("4T3"))));
+    TimeWindow now = new TimeWindow(LocalDate.parse("2026-09-09"), LocalTime.parse("13:00"), LocalTime.parse("15:30"));
+    String ongoing = Long.toString(store.createReservation(new Booking(b12.id(), now, "Aula", 6), joao.id(), T0).id());
+
+    assertResponse("update_reservation_response", "400", "Dados da reserva em formato invalido",
+        update(JOAO, ongoing, "", "13:50", "", ""));
+    assertTrue(lastDiagnosis().contains("campo 'end_time'"), lastDiagnosis());
+    assertStatus("200", update(JOAO, ongoing, "", "14:40", "", ""));
+  }
+
+  private JsonObject move(String token, String id, String roomId, String date) {
+    return handle("update_reservation", token, reservationId(id) + ",'room_id':'" + roomId + "','date':'" + date
+        + "','start_time':'','end_time':'','topic':'','participants':''");
+  }
+
+  private Room lab(String name, int capacity, String... slots) {
+    return store.createRoom(name, capacity, "Bloco C", List.of(), List.of(slots).stream().map(ReservationHandlersTest::slot)
+        .toList()).orElseThrow();
+  }
+
+  // A troca libera o horário antigo na hora
+  @Test
+  void updateReservationMovesToAnotherRoomAndDay() {
+    Room lab = lab("Lab 3", 20, "3T1", "3T2");
+    String id = reservedId(JOAO, T1_T2);
+    String labId = Long.toString(lab.id());
+
+    assertResponse("update_reservation_response", "200", "Reserva atualizada com sucesso",
+        move(JOAO, id, labId, ""));
+    assertEquals(labId, read(id).get(Fields.ROOM_ID).getAsString());
+    assertStatus("201", reserve(ANA, T1_T2));
+
+    assertStatus("200", move(JOAO, id, "", "2026-09-22"));
+    JsonObject moved = read(id);
+    assertEquals("2026-09-22", moved.get(Fields.DATE).getAsString());
+    assertEquals("13:00", moved.get(Fields.START_TIME).getAsString());
+  }
+
+  // 404 da reserva, depois 404 da sala de destino, depois o 403 de dono
+  @Test
+  void updateReservationChecksTheDestinationRoomLikeABooking() {
+    String id = reservedId(JOAO, T1_T2);
+    Room small = lab("Sala 4", 4, "3T1", "3T2");
+    Room closed = lab("Sala 5", 20, "3T1");
+    Room taken = lab("Sala 6", 20, "3T1", "3T2");
+    store.createReservation(new Booking(taken.id(), new TimeWindow(LocalDate.parse("2026-09-15"),
+        LocalTime.parse("13:50"), LocalTime.parse("14:40")), "Aula", 2), joao.id(), T0);
+    Room inactive = lab("Sala 7", 20, "3T1", "3T2");
+    store.updateRoom(inactive.id(), new RoomChanges(null, null, null, null, RoomStatus.INACTIVE, null));
+
+    assertResponse("update_reservation_response", "404", "Sala nao encontrada", move(ANA, id, "99", ""));
+    assertResponse("update_reservation_response", "403", "Permissao insuficiente",
+        move(ANA, id, Long.toString(small.id()), ""));
+
+    String[][] cases = {
+        { Long.toString(small.id()), "", "400", "Dados da reserva em formato invalido" },
+        { Long.toString(inactive.id()), "", "409", "Sala indisponivel para reserva" },
+        { Long.toString(closed.id()), "", "409", "Horario fora do funcionamento da sala" },
+        { "", "2026-09-16", "409", "Horario fora do funcionamento da sala" },
+        { Long.toString(taken.id()), "", "409", "Sala ja reservada no periodo solicitado" },
+        { "", "2026-09-08", "400", "Dados da reserva em formato invalido" } };
+    for (String[] c : cases) {
+      assertResponse("update_reservation_response", c[2], c[3], move(JOAO, id, c[0], c[1]));
+    }
+    assertEquals(Long.toString(b12.id()), read(id).get(Fields.ROOM_ID).getAsString());
+  }
+
+  // Sair de uma sala inativa para uma ativa é permitido: manda a sala de destino
+  @Test
+  void updateReservationCanLeaveAnInactiveRoom() {
+    String id = reservedId(JOAO, T1_T2);
+    Room lab = lab("Lab 3", 20, "3T1", "3T2");
+    store.updateRoom(b12.id(), new RoomChanges(null, null, null, null, RoomStatus.INACTIVE, null));
+
+    assertStatus("200", move(JOAO, id, Long.toString(lab.id()), ""));
   }
 
   @Test

@@ -132,6 +132,14 @@ public final class Session implements AutoCloseable {
     return client.ask(request);
   }
 
+  // `read_room` sem `room_id`: todas as salas, com a agenda do dia se vier `date`
+  public JsonObject readRooms(String date) throws IOException {
+    JsonObject request = authenticated(Op.READ_ROOM);
+    addUnlessBlank(request, Fields.DATE, date);
+
+    return client.ask(request);
+  }
+
   public JsonObject updateRoom(String roomId, RoomFields room, String roomStatus) throws IOException {
     JsonObject request = onRoom(Op.UPDATE_ROOM, roomId);
     addRoom(request, room);
@@ -176,8 +184,12 @@ public final class Session implements AutoCloseable {
     return client.ask(onReservation(Op.READ_RESERVATION, reservationId));
   }
 
-  public JsonObject updateReservation(String reservationId, ReservationFields changes) throws IOException {
+  // Sala e dia em branco não vão: servidor anterior à v2.10 responde 400 a essas chaves
+  public JsonObject updateReservation(String reservationId, String roomId, String date, ReservationFields changes)
+      throws IOException {
     JsonObject request = onReservation(Op.UPDATE_RESERVATION, reservationId);
+    addUnlessBlank(request, Fields.ROOM_ID, roomId);
+    addUnlessBlank(request, Fields.DATE, date);
     addReservation(request, changes);
 
     return client.ask(request);

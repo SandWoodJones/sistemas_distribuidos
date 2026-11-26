@@ -1,11 +1,14 @@
 package reservas.server;
 
+import static java.util.Objects.requireNonNullElse;
+
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.ZoneId;
 import java.util.List;
+import java.util.Optional;
 
 import com.google.gson.JsonObject;
 
@@ -107,9 +110,15 @@ public final class ReservationHandlers {
 
     User user = Caller.authenticate(request, context).user();
     SqliteStore store = context.store();
-    long roomId = findReservation(store, id).roomId();
     LocalDateTime now = LocalDateTime.now(context.clock());
-    store.withRoomLock(roomId, () -> reschedule(store, user, id, changes, now));
+
+    Optional<Reservation> updated = Optional.empty();
+    while (updated.isEmpty()) {
+      long origin = findReservation(store, id).roomId();
+      long destination = requireNonNullElse(changes.roomId(), origin);
+      updated = store.withRoomLocks(origin, destination,
+          () -> reschedule(store, user, id, origin, changes, now));
+    }
 
     return Responses.of(Op.UPDATE_RESERVATION, Status.OK, "Reserva atualizada com sucesso");
   }
@@ -146,54 +155,64 @@ public final class ReservationHandlers {
     return store.createReservation(booking, user.id(), createdAt);
   }
 
-  // `room_id` e `date` não mudam; para trocar, cancela-se e cria-se outra
   private static ReservationChanges changes(Request request) {
-    request.mustBeAbsent(Fields.ROOM_ID);
-    request.mustBeAbsent(Fields.DATE);
+    Long roomId = request.optional(Fields.ROOM_ID, Formats.ID).map(Long::valueOf).orElse(null);
+    LocalDate date = request.dateChange().orElse(null);
     LocalTime start = request.optional(Fields.START_TIME, Formats.START_TIME).map(LocalTime::parse).orElse(null);
     LocalTime end = request.optional(Fields.END_TIME, Formats.END_TIME).map(LocalTime::parse).orElse(null);
     String topic = request.optional(Fields.TOPIC, Formats.TOPIC).orElse(null);
     Integer participants = request.optional(Fields.PARTICIPANTS, Formats.CAPACITY).map(Integer::valueOf).orElse(null);
 
-    return new ReservationChanges(start, end, topic, participants);
+    return new ReservationChanges(roomId, date, start, end, topic, participants);
   }
 
-  // Roda sob o lock da sala da reserva
-  private static Reservation reschedule(SqliteStore store, User user, long id, ReservationChanges changes,
-      LocalDateTime now) {
+  // Roda sob o lock da sala de origem e da de destino. Vazio se a reserva mudou de sala entre ler e travar:
+  // o lock pego não é mais o dela, e quem chama tenta de novo
+  private static Optional<Reservation> reschedule(SqliteStore store, User user, long id, long origin,
+      ReservationChanges changes, LocalDateTime now) {
     Reservation current = findReservation(store, id);
+    if (current.roomId() != origin) {
+      return Optional.empty();
+    }
+
+    Room destination = RoomHandlers.findRoom(store, requireNonNullElse(changes.roomId(), origin));
     requireOwner(user, current);
     requireActive(current, now);
 
-    Room room = room(store, current);
-    Reservation updated = changed(current, changes, now);
-    requireFits(room, updated.participants());
-    if (changes.movesTime()) {
-      requireBookable(room, updated.window());
-      requireFree(othersOn(store, current), updated.window());
+    Reservation updated = applied(current, changes);
+    requireFits(destination, updated.participants());
+    requireUpcoming(updated, changes, now);
+    if (changes.moves()) {
+      requireBookable(destination, updated.window());
+      requireFree(othersOn(store, updated), updated.window());
     }
 
     store.updateReservation(updated);
-    return updated;
+    return Optional.of(updated);
   }
 
-  // Horário resultante com fim antes do início, ou início novo que já passou
-  private static Reservation changed(Reservation current, ReservationChanges changes, LocalDateTime now) {
-    Reservation updated;
+  private static Reservation applied(Reservation current, ReservationChanges changes) {
     try {
-      updated = current.with(changes);
+      return current.with(changes);
     } catch (IllegalArgumentException e) {
       throw ProtocolException.badRequest(RESERVATION_BAD_REQUEST, "campo 'end_time': " + e.getMessage(), e);
     }
+  }
 
-    if (changes.start() != null && !updated.window().startsAt().isAfter(now)) {
+  // Alterar não encerra reserva: fim no passado é 400. Início só conta se mudou (dia ou hora); assim a reserva em
+  // andamento ainda pode ser encurtada ou estendida
+  private static void requireUpcoming(Reservation updated, ReservationChanges changes, LocalDateTime now) {
+    if (changes.movesStart() && !updated.window().startsAt().isAfter(now)) {
       throw ProtocolException.badRequest(RESERVATION_BAD_REQUEST,
           "campo 'start_time': inicio " + updated.window().startsAt() + " ja passou, agora e " + now);
     }
-
-    return updated;
+    if (!updated.window().endsAt().isAfter(now)) {
+      throw ProtocolException.badRequest(RESERVATION_BAD_REQUEST,
+          "campo 'end_time': fim " + updated.window().endsAt() + " ja passou, agora e " + now);
+    }
   }
 
+  // A própria reserva fica de fora: ela sai do horário antigo nesta mesma seção crítica
   private static List<Reservation> othersOn(SqliteStore store, Reservation reservation) {
     return store.listReservationsOn(reservation.roomId(), reservation.window().date()).stream()
         .filter(other -> other.id() != reservation.id()).toList();

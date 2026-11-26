@@ -68,6 +68,11 @@ public final class Request {
     return Optional.of(window(date.orElseThrow(), start.orElseThrow(), end.orElseThrow()));
   }
 
+  // Data de alteração: ausente ou `""` mantém
+  public Optional<LocalDate> dateChange() {
+    return optional(Fields.DATE, Formats.DATE).map(value -> calendarDate(Fields.DATE, value));
+  }
+
   public TimeWindow window() {
     LocalDate date = calendarDate(Fields.DATE, required(Fields.DATE, Formats.DATE));
     LocalTime start = LocalTime.parse(required(Fields.START_TIME, Formats.START_TIME));

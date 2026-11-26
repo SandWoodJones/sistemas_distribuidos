@@ -177,6 +177,7 @@ public final class ClientWindow extends JFrame {
     JTextField id = form.field("ID da sala");
     JTextField day = form.field("Data da agenda");
     form.button("Ler sala", () -> session.readRoom(text(id), text(day)));
+    form.button("Ler todas as salas", () -> session.readRooms(text(day)));
 
     return form.panel();
   }
@@ -253,11 +254,13 @@ public final class ClientWindow extends JFrame {
     form.button("Ler reserva", () -> session.readReservation(text(id)));
     form.separator();
 
+    JTextField newRoom = form.field("Nova sala");
+    JTextField newDate = form.field("Nova data");
     JComboBox<String> start = form.choice("Novo inicio", keepOr(classBoundaries(ClassPeriod::start)));
     JComboBox<String> end = form.choice("Novo fim", keepOr(classBoundaries(ClassPeriod::end)));
     JTextField topic = form.field("Novo assunto");
     JTextField participants = form.field("Participantes");
-    form.button("Atualizar reserva", () -> session.updateReservation(text(id),
+    form.button("Atualizar reserva", () -> session.updateReservation(text(id), text(newRoom), text(newDate),
         new ReservationFields(selected(start), selected(end), text(topic), text(participants))));
     form.separator();
 

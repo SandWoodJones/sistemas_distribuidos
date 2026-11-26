@@ -245,6 +245,39 @@ class RoomHandlersTest {
     assertEquals("indisponivel", inactive.get(0).getAsJsonObject().get(Fields.SLOT_STATUS).getAsString());
   }
 
+  // Sem `room_id`: todas as salas, nunca 404; com `date`, cada uma traz a sua agenda
+  @Test
+  void readRoomWithoutAnIdReadsEveryRoom() {
+    store.createRoom("Lab 3", 30, "Bloco C", List.of(), List.of(slot("2M1"))).orElseThrow();
+
+    JsonObject all = handle("read_room", COMMON, "");
+    assertResponse("read_room_response", "200", "Consulta realizada com sucesso", all);
+    assertEquals("2", all.get(Fields.COUNT).getAsString());
+    JsonArray rooms = all.getAsJsonArray(Fields.ROOMS);
+    assertEquals("Sala B12", rooms.get(0).getAsJsonObject().get(Fields.NAME).getAsString());
+    assertFalse(rooms.get(0).getAsJsonObject().has(Fields.AGENDA));
+
+    JsonObject tuesday = handle("read_room", COMMON, ",'date':'2026-09-15'");
+    assertEquals("2026-09-15", tuesday.get(Fields.DATE).getAsString());
+    JsonArray withAgenda = tuesday.getAsJsonArray(Fields.ROOMS);
+    assertEquals(2, withAgenda.get(0).getAsJsonObject().getAsJsonArray(Fields.AGENDA).size());
+    assertEquals(0, withAgenda.get(1).getAsJsonObject().getAsJsonArray(Fields.AGENDA).size());
+    assertFalse(withAgenda.get(0).getAsJsonObject().has(Fields.DATE));
+
+    store.deleteRoom(b12.id());
+    store.deleteRoom(store.findRoomByName("Lab 3").orElseThrow().id());
+    assertEquals("0", handle("read_room", COMMON, "").get(Fields.COUNT).getAsString());
+  }
+
+  @Test
+  void readRoomRejectsAnIdSentOutsideTheFormat() {
+    for (String id : new String[] { "''", "null", "'B12'" }) {
+      assertResponse("read_room_response", "400", "Dados em formato invalido",
+          handle("read_room", COMMON, ",'room_id':" + id));
+      assertTrue(lastDiagnosis().contains("campo 'room_id'"), lastDiagnosis());
+    }
+  }
+
   @Test
   void readRoomRejectsADateOutsideTheFormat() {
     String id = ",'room_id':'" + b12.id() + "'";

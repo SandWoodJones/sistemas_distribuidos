@@ -73,18 +73,30 @@ public final class RoomHandlers {
     return Responses.listing(Op.LIST_ROOMS, Fields.ROOMS, rooms);
   }
 
+  // Sem `room_id` lê todas as salas, e aí não existe 404
   static JsonObject readRoom(JsonObject json, ServerContext context) {
     Request request = new Request(json, Messages.DATA_BAD_REQUEST);
-    long id = roomId(request);
+    Optional<Long> id = request.filter(Fields.ROOM_ID, Formats.ID).map(Long::valueOf);
     Optional<LocalDate> date = request.dateFilter();
 
     User viewer = Caller.authenticate(request, context).user();
     SqliteStore store = context.store();
-    Room room = findRoom(store, id);
+    if (id.isPresent()) {
+      return Responses.found(Op.READ_ROOM, roomView(store, findRoom(store, id.get()), date, viewer));
+    }
 
-    JsonObject view = date.map(day -> RoomViews.withAgenda(room, day, agenda(store, room, day, viewer)))
+    List<JsonObject> rooms = store.listRooms(ANY_CAPACITY).stream()
+        .map(room -> date.map(day -> RoomViews.withDayAgenda(room, day, agenda(store, room, day, viewer)))
+            .orElseGet(() -> RoomViews.details(room)))
+        .toList();
+    JsonObject response = Responses.listing(Op.READ_ROOM, Fields.ROOMS, rooms);
+    date.ifPresent(day -> response.addProperty(Fields.DATE, day.toString()));
+    return response;
+  }
+
+  private static JsonObject roomView(SqliteStore store, Room room, Optional<LocalDate> date, User viewer) {
+    return date.map(day -> RoomViews.withAgenda(room, day, agenda(store, room, day, viewer)))
         .orElseGet(() -> RoomViews.details(room));
-    return Responses.found(Op.READ_ROOM, view);
   }
 
   static JsonObject updateRoom(JsonObject json, ServerContext context) {
