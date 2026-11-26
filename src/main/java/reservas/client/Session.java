@@ -17,6 +17,7 @@ public final class Session implements AutoCloseable {
 
   private String token;
   private String role;
+  private String email;
 
   public Session(ProtocolClient client) {
     this.client = client;
@@ -48,6 +49,7 @@ public final class Session implements AutoCloseable {
     if (succeeded(response)) {
       token = response.get(Fields.TOKEN).getAsString();
       role = response.get(Fields.ROLE).getAsString();
+      this.email = email;
     }
 
     return response;
@@ -212,9 +214,15 @@ public final class Session implements AutoCloseable {
     }
   }
 
+  // "email (perfil)" de quem está logado
+  public Optional<String> account() {
+    return isLoggedIn() ? Optional.of(email + " (" + role + ")") : Optional.empty();
+  }
+
   private void forget() {
     token = null;
     role = null;
+    email = null;
   }
 
   private JsonObject request(Op op) {
